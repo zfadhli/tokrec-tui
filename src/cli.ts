@@ -7,6 +7,7 @@ import type {
 } from "@opentui/core";
 import { Box, createCliRenderer, Input, Text } from "@opentui/core";
 import type { AppConfig } from "./config.ts";
+import { saveConfig } from "./config.ts";
 import type { Manager } from "./manager.ts";
 import type { AppStatus } from "./types.ts";
 import { sleep } from "./utils.ts";
@@ -342,6 +343,10 @@ export class CLI {
       ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
       ...(this.config.duration ? { duration: this.config.duration } : {}),
     });
+
+    // Save updated config
+    this.config.users.push(user);
+    saveConfig(this.config);
   }
 
   async shutdown(): Promise<void> {

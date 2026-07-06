@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 export interface AppConfig {
   outputDir: string;
@@ -41,4 +41,8 @@ export function loadConfig(path = "ttlive.json"): AppConfig {
     process.exit(1);
   }
   return { ...defaults, ...parsed };
+}
+
+export function saveConfig(config: AppConfig, path = "ttlive.json"): void {
+  writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
 }
