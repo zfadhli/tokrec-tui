@@ -1,1 +1,3 @@
-// ponytail: utils.ts kept for future shared helpers
+export function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}

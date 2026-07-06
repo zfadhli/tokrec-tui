@@ -9,9 +9,11 @@ import { Box, createCliRenderer, Input, Text } from "@opentui/core";
 import type { AppConfig } from "./config.ts";
 import type { Manager } from "./manager.ts";
 import type { AppStatus } from "./types.ts";
+import { sleep } from "./utils.ts";
 
 const REFRESH_MS = 2000;
 const SHUTDOWN_TIMEOUT = 5000;
+const STARTUP_DELAY = 5000;
 
 const stateColors: Record<AppStatus, string> = {
   recording: "green",
@@ -40,8 +42,9 @@ export class CLI {
       process.exit(1);
     }
 
-    // Start all recorders
-    for (const user of this.config.users) {
+    // Start all recorders sequentially with delay
+    for (let i = 0; i < this.config.users.length; i++) {
+      const user = this.config.users[i]!;
       this.manager.startUser(user, {
         outputDir: this.config.outputDir,
         interval: this.config.interval,
@@ -49,6 +52,9 @@ export class CLI {
         ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
         ...(this.config.duration ? { duration: this.config.duration } : {}),
       });
+      if (i < this.config.users.length - 1) {
+        await sleep(STARTUP_DELAY);
+      }
     }
 
     // Create renderer
