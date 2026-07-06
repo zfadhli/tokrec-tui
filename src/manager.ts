@@ -5,6 +5,7 @@ import type { AppStatus } from "./types.ts";
 export class Manager {
   private controllers = new Map<string, RecorderController>();
   private lastErrors = new Map<string, string>();
+  private recordingStarts = new Map<string, number>();
 
   // ponytail: same config for all users; per-user overrides per proxy/cookies if needed
   startUser(user: string, config: Omit<RecorderConfig, "user">): RecorderController {
@@ -24,6 +25,12 @@ export class Manager {
     // Clear error when recording starts (transient error recovered)
     ctrl.on("recording:start", () => {
       this.lastErrors.delete(user);
+      this.recordingStarts.set(user, Date.now());
+    });
+
+    // Clear timer when recording ends
+    ctrl.on("recording:end", () => {
+      this.recordingStarts.delete(user);
     });
 
     // ponytail: async start() race — stopAll() called before start() body
@@ -40,6 +47,7 @@ export class Manager {
     await this.controllers.get(user)?.stop();
     this.controllers.delete(user);
     this.lastErrors.delete(user);
+    this.recordingStarts.delete(user);
   }
 
   restartUser(user: string, config: Omit<RecorderConfig, "user">): void {
@@ -67,5 +75,9 @@ export class Manager {
 
   getLastError(user: string): string | undefined {
     return this.lastErrors.get(user);
+  }
+
+  getRecordingStart(user: string): number | undefined {
+    return this.recordingStarts.get(user);
   }
 }

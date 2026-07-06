@@ -150,7 +150,25 @@ export class CLI {
       const state = statuses.get(user) ?? "idle";
       const lastError = this.manager.getLastError(user);
       const color = lastError ? "red" : (stateColors[state] ?? "gray");
-      const label = lastError ? `error: ${lastError.slice(0, 24)}` : state;
+
+      let label: string;
+      if (lastError) {
+        label = `error: ${lastError.slice(0, 24)}`;
+      } else if (state === "recording") {
+        const start = this.manager.getRecordingStart(user);
+        const sec = start ? Math.floor((Date.now() - start) / 1000) : 0;
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        const timer =
+          h > 0
+            ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+            : `${m}:${String(s).padStart(2, "0")}`;
+        label = `recording  ${timer}`;
+      } else {
+        label = state;
+      }
+
       renderable.content = `  ${user.padEnd(24)} ${label}`;
       renderable.fg = color;
     }
