@@ -1,15 +1,27 @@
+import { createCliRenderer, Box, Text, Input, vstyles } from "@opentui/core";
+import type { CliRenderer, KeyEvent, Renderable, TextRenderable, InputRenderable } from "@opentui/core";
 import type { Manager } from "./manager.ts";
 import type { AppConfig } from "./config.ts";
-import { renderStatus } from "./terminal.ts";
-import { sleep } from "./utils.ts";
+import type { AppStatus } from "./types.ts";
 
-const REFRESH_INTERVAL = 2000;
-const STOP_TIMEOUT = 5000;
+const REFRESH_MS = 2000;
+const SHUTDOWN_TIMEOUT = 5000;
+
+const stateColors: Record<AppStatus, string> = {
+  recording: "green",
+  converting: "yellow",
+  polling: "cyan",
+  idle: "gray",
+  stopped: "gray",
+  error: "red",
+};
 
 export class CLI {
-  private refreshTimer: ReturnType<typeof setInterval> | null = null;
-  private rawMode = false;
+  private renderer: CliRenderer | null = null;
+  private userRenderables = new Map<string, TextRenderable>();
+  private statusContainer: Renderable | null = null;
   private shuttingDown = false;
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private manager: Manager,
@@ -22,7 +34,7 @@ export class CLI {
       process.exit(1);
     }
 
-    console.log(`Starting monitoring for ${this.config.users.length} user(s)...\n`);
+    // Start all recorders
     for (const user of this.config.users) {
       this.manager.startUser(user, {
         outputDir: this.config.outputDir,
@@ -33,132 +45,151 @@ export class CLI {
       });
     }
 
-    this.setupInput();
-    this.setupRefresh();
-    await this.waitForQuit();
+    // Create renderer
+    try {
+      this.renderer = await createCliRenderer({
+        exitOnCtrlC: false,
+        targetFps: 10,
+      });
+    } catch (err) {
+      console.error("Failed to initialize TUI:", err);
+      console.error("Ensure you're running in a supported terminal with Bun >= 1.2");
+      process.exit(1);
+    }
+
+    // Build component tree with VNodes
+    const container = Box({
+      flexDirection: "column",
+      borderStyle: "rounded",
+      title: "User Status",
+      padding: 1,
+      width: 50,
+    });
+
+    for (const user of this.config.users) {
+      container.add(Text({ content: `  ${user.padEnd(24)} Idle` }));
+    }
+
+    container.add(Text({
+      content: "  [q] quit  [s] stop user",
+      fg: "gray",
+    }));
+
+    this.renderer.root.add(container);
+
+    // Extract actual renderables from the mounted tree
+    this.statusContainer = this.renderer.root.getChildren()[0] ?? null;
+    const children = this.statusContainer?.getChildren() ?? [];
+    for (let i = 0; i < this.config.users.length; i++) {
+      const child = children[i];
+      if (child) this.userRenderables.set(this.config.users[i]!, child as any);
+    }
+
+    // Keyboard handling
+    this.renderer.keyInput.on("keypress", (event: KeyEvent) => {
+      if (event.name === "q" || (event.ctrl && event.name === "c")) {
+        this.shutdown().then(() => process.exit(0));
+      }
+      if (event.name === "s") {
+        this.handleStopMode();
+      }
+    });
+
+    // Start render loop + refresh
+    this.renderer.start();
+    this.refreshStatus();
+    this.refreshTimer = setInterval(() => this.refreshStatus(), REFRESH_MS);
+
+    // Keep process alive
+    await new Promise(() => {});
   }
 
-  /** Public shutdown — restores terminal, stops all recorders. Safe to call multiple times. */
+  private refreshStatus(): void {
+    const statuses = this.manager.getStatuses();
+    for (const [user, renderable] of this.userRenderables) {
+      const state = statuses.get(user) ?? "idle";
+      const color = stateColors[state] ?? "gray";
+      renderable.content = `  ${user.padEnd(24)} ${state}`;
+      renderable.fg = color;
+    }
+  }
+
+  private handleStopMode(): void {
+    if (!this.renderer) return;
+
+    // Hide status container
+    this.statusContainer!.visible = false;
+
+    // Build stop mode UI with VNodes
+    const stopBox = Box({
+      flexDirection: "column",
+      borderStyle: "rounded",
+      title: "Stop Mode",
+      padding: 1,
+      width: 50,
+    });
+
+    const users = this.manager.getActiveUsers();
+    if (users.length === 0) {
+      stopBox.add(Text({ content: "  No active users." }));
+      stopBox.add(Text({ content: "  Press Enter to return..." }));
+
+      const inputVNode = Input({ placeholder: "" });
+      stopBox.add(inputVNode);
+      this.renderer.root.add(stopBox);
+
+      // Extract actual InputRenderable
+      const stopRenderable = this.renderer.root.getChildren().at(-1);
+      if (!stopRenderable) return;
+      const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
+      inputRenderable.focus();
+
+      inputVNode.on("enter", () => {
+        this.renderer!.root.remove(stopRenderable as any);
+        this.statusContainer!.visible = true;
+      });
+      return;
+    }
+
+    users.forEach((u, i) => {
+      stopBox.add(Text({ content: `  ${i + 1}. ${u}` }));
+    });
+    stopBox.add(Text({ content: "" }));
+    stopBox.add(Text({ content: "  Enter number or username (blank to cancel):" }));
+
+    const inputVNode = Input({ placeholder: "" });
+    stopBox.add(inputVNode);
+    this.renderer.root.add(stopBox);
+
+    // Extract actual renderables
+    const stopRenderable = this.renderer.root.getChildren().at(-1);
+    if (!stopRenderable) return;
+    const children = stopRenderable.getChildren();
+    const inputRenderable = children[children.length - 1] as InputRenderable;
+    inputRenderable.focus();
+
+    inputVNode.on("enter", () => {
+      const value = inputRenderable.value.trim();
+      if (value) {
+        const idx = Number.parseInt(value, 10);
+        const target =
+          !Number.isNaN(idx) && idx >= 1 && idx <= users.length
+            ? users[idx - 1]
+            : value;
+        if (target && users.includes(target)) {
+          this.manager.stopUser(target).catch(() => {});
+        }
+      }
+      this.renderer!.root.remove(stopRenderable as any);
+      this.statusContainer!.visible = true;
+    });
+  }
+
   async shutdown(): Promise<void> {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
     if (this.refreshTimer) clearInterval(this.refreshTimer);
-    if (this.rawMode) {
-      process.stdin.setRawMode(false);
-      this.rawMode = false;
-    }
-    process.stdin.pause();
-    console.clear();
-    console.log("Shutting down...");
-    await Promise.race([this.manager.stopAll(), sleep(STOP_TIMEOUT)]);
-  }
-
-  private setupInput(): void {
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
-      this.rawMode = true;
-    }
-    process.stdin.resume();
-    process.stdin.setEncoding("utf-8");
-
-    process.stdin.on("data", async (buf: Buffer) => {
-      const key = buf.toString();
-      if (key === "q" || key === "\x03") {
-        await this.shutdown();
-        process.exit(0);
-      }
-      if (key === "s") {
-        await this.handleStopMode();
-      }
-    });
-  }
-
-  private setupRefresh(): void {
-    this.refreshTimer = setInterval(() => {
-      this.renderFrame();
-    }, REFRESH_INTERVAL);
-    this.renderFrame();
-  }
-
-  private renderFrame(): void {
-    const statuses = this.manager.getStatuses();
-    const output = renderStatus(statuses);
-    console.clear();
-    console.log(output);
-  }
-
-  // ponytail: line input only; multi-select / fuzzy-search / tab-complete if UX demands
-  private async handleStopMode(): Promise<void> {
-    if (this.refreshTimer) clearInterval(this.refreshTimer);
-    if (this.rawMode) process.stdin.setRawMode(false);
-
-    console.clear();
-    console.log("  Stop Mode — choose a user to stop:\n");
-    const users = this.manager.getActiveUsers();
-    if (users.length === 0) {
-      console.log("  No active users.\n");
-      console.log("  Press Enter to return to monitoring...");
-      await this.waitForEnter();
-      this.resumeMonitoring();
-      return;
-    }
-    users.forEach((u, i) => console.log(`  ${i + 1}. ${u}`));
-    console.log("\n  Enter number or username (or blank to cancel):");
-
-    const input = await this.readLine();
-    const trimmed = input.trim();
-    if (trimmed) {
-      const idx = Number.parseInt(trimmed, 10);
-      const target =
-        !Number.isNaN(idx) && idx >= 1 && idx <= users.length
-          ? users[idx - 1]
-          : trimmed;
-      if (target && users.includes(target)) {
-        try {
-          await this.manager.stopUser(target);
-          console.log(`  Stopped: ${target}`);
-        } catch {
-          console.log(`  Error stopping ${target}`);
-        }
-      } else {
-        console.log(`  Unknown user: ${trimmed}`);
-      }
-    }
-
-    console.log("\n  Press Enter to return to monitoring...");
-    await this.waitForEnter();
-    this.resumeMonitoring();
-  }
-
-  private readLine(): Promise<string> {
-    return new Promise((resolve) => {
-      const onData = (chunk: Buffer) => {
-        const str = chunk.toString();
-        process.stdin.removeListener("data", onData);
-        resolve(str.replace(/[\r\n]/g, ""));
-      };
-      process.stdin.on("data", onData);
-    });
-  }
-
-  private waitForEnter(): Promise<void> {
-    return new Promise((resolve) => {
-      const onData = (chunk: Buffer) => {
-        process.stdin.removeListener("data", onData);
-        resolve();
-      };
-      process.stdin.on("data", onData);
-    });
-  }
-
-  private waitForQuit(): Promise<void> {
-    return new Promise(() => {});
-  }
-
-  private resumeMonitoring(): void {
-    if (process.stdin.isTTY && this.rawMode) {
-      process.stdin.setRawMode(true);
-    }
-    this.setupRefresh();
+    this.renderer?.destroy();
+    await Promise.race([this.manager.stopAll(), new Promise(r => setTimeout(r, SHUTDOWN_TIMEOUT))]);
   }
 }

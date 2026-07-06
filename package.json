@@ -13,6 +13,7 @@
         "ttlive": "./bin/ttlive"
     },
     "dependencies": {
+        "@opentui/core": "^0.4.3",
         "@zfadhli/tokrec": "^0.12.2"
     },
     "devDependencies": {
