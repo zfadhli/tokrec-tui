@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-07-06
+
+### Added
+- TUI banner with version display
+- JSONC config support (`tokrec.jsonc`)
+
+### Changed
+- Renamed package from `ttlive-manager` to `tokrec-tui`
+- Renamed binary from `ttlive` to `tokrec-tui`
+- Renamed config file from `ttlive.json` to `tokrec.json`
+- Updated status colors: recording=cyan, polling=white
+- Updated README.md and AGENTS.md for new naming
+
+### Fixed
+- Status display not updating after banner was added
+
 ## [0.3.1] - 2025-07-06
 
 ### Changed
