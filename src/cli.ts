@@ -59,6 +59,12 @@ export class CLI {
     }
 
     // Build component tree — all users show "Idle" until downloads start
+    const banner = Text({
+      content: "  tokrec-tui",
+      fg: "cyan",
+    });
+    this.renderer.root.add(banner);
+
     const container = Box({
       flexDirection: "column",
       borderStyle: "rounded",
