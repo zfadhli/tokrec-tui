@@ -155,26 +155,18 @@ export class CLI {
     if (users.length === 0) {
       stopBox.add(Text({ content: "  No active users." }));
       stopBox.add(Text({ content: "  Press Enter to return..." }));
-
-      stopBox.add(
-        Input({
-          placeholder: "",
-          onSubmit: () => {
-            const stopRenderable = this.renderer?.root.getChildren().at(-1);
-            if (stopRenderable) this.renderer?.root.remove(stopRenderable as any);
-            this.statusContainer!.visible = true;
-            this.inStopMode = false;
-          },
-        }),
-      );
+      stopBox.add(Input({ placeholder: "" }));
       this.renderer.root.add(stopBox);
 
-      // Focus the input
       const stopRenderable = this.renderer.root.getChildren().at(-1);
-      if (stopRenderable) {
-        const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
-        inputRenderable?.focus();
-      }
+      if (!stopRenderable) return;
+      const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
+      inputRenderable.focus();
+      inputRenderable.on("enter", () => {
+        this.renderer?.root.remove(stopRenderable as any);
+        this.statusContainer!.visible = true;
+        this.inStopMode = false;
+      });
       return;
     }
 
@@ -183,38 +175,27 @@ export class CLI {
     });
     stopBox.add(Text({ content: "" }));
     stopBox.add(Text({ content: "  Enter number or username (blank to cancel):" }));
-
-    stopBox.add(
-      Input({
-        placeholder: "",
-        onSubmit: () => {
-          const stopRenderable = this.renderer?.root.getChildren().at(-1);
-          if (!stopRenderable) return;
-          const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
-          const value = inputRenderable?.value?.trim() ?? "";
-
-          if (value) {
-            const idx = Number.parseInt(value, 10);
-            const target =
-              !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
-            if (target && users.includes(target)) {
-              this.manager.stopUser(target).catch(() => {});
-            }
-          }
-          this.renderer?.root.remove(stopRenderable as any);
-          this.statusContainer!.visible = true;
-          this.inStopMode = false;
-        },
-      }),
-    );
+    stopBox.add(Input({ placeholder: "" }));
     this.renderer.root.add(stopBox);
 
-    // Focus the input
     const stopRenderable = this.renderer.root.getChildren().at(-1);
-    if (stopRenderable) {
-      const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
-      inputRenderable?.focus();
-    }
+    if (!stopRenderable) return;
+    const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
+    inputRenderable.focus();
+    inputRenderable.on("enter", () => {
+      const value = inputRenderable.value.trim();
+      if (value) {
+        const idx = Number.parseInt(value, 10);
+        const target =
+          !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
+        if (target && users.includes(target)) {
+          this.manager.stopUser(target).catch(() => {});
+        }
+      }
+      this.renderer?.root.remove(stopRenderable as any);
+      this.statusContainer!.visible = true;
+      this.inStopMode = false;
+    });
   }
 
   async shutdown(): Promise<void> {
