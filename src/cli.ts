@@ -321,13 +321,15 @@ export class CLI {
   private addNewUser(user: string): void {
     if (!this.statusContainer) return;
 
-    // Add text renderable for new user
+    // Add text renderable for new user (insert before footer)
+    const children = this.statusContainer.getChildren();
+    const footerIndex = children.length - 1; // footer is last child
     const newText = Text({ content: `  ${user.padEnd(24)} Idle` });
-    this.statusContainer.add(newText);
+    this.statusContainer.add(newText, footerIndex);
 
     // Extract the actual renderable and add to map
-    const children = this.statusContainer.getChildren();
-    const renderable = children[children.length - 2] as TextRenderable; // -2 because footer is last
+    const updatedChildren = this.statusContainer.getChildren();
+    const renderable = updatedChildren[footerIndex] as TextRenderable;
     if (renderable) {
       this.userRenderables.set(user, renderable);
     }
