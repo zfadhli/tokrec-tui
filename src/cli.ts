@@ -161,6 +161,7 @@ export class CLI {
       const stopRenderable = this.renderer.root.getChildren().at(-1);
       if (!stopRenderable) return;
       const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
+      inputRenderable.value = "";
       inputRenderable.focus();
       inputRenderable.on("enter", () => {
         this.renderer?.root.remove(stopRenderable as any);
@@ -181,6 +182,7 @@ export class CLI {
     const stopRenderable = this.renderer.root.getChildren().at(-1);
     if (!stopRenderable) return;
     const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
+    inputRenderable.value = "";
     inputRenderable.focus();
     inputRenderable.on("enter", () => {
       const value = inputRenderable.value.trim();
