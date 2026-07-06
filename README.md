@@ -1,50 +1,106 @@
+<!-- prettier-ignore -->
+<div align="center">
+
 # tokrec-tui
 
-A Bun-based CLI tool to monitor and record multiple TikTok livestreams using [@zfadhli/tokrec](https://github.com/zfadhli/tokrec).
+A terminal UI for monitoring and recording multiple TikTok livestreams simultaneously.
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Bun](https://img.shields.io/badge/Bun->=1.2-fbf0df?style=flat-square&logo=bun&logoColor=%23000000)](https://bun.sh)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+
+[Features](#features) • [Install](#install) • [Usage](#usage) • [Configuration](#configuration) • [Development](#development)
+
+</div>
+
+## Overview
+
+tokrec-tui is a CLI tool that monitors multiple TikTok users and automatically records their livestreams. It uses [@zfadhli/tokrec](https://github.com/zfadhli/tokrec) for stream detection and recording, with a live terminal UI powered by [@opentui/core](https://github.com/anomalyco/opentui).
 
 ## Features
 
-- ✅ Monitor multiple TikTok users simultaneously
-- ✅ Auto-detect when a user goes live and start recording
-- ✅ Live TUI with color-coded status display
-- ✅ Keyboard shortcuts: `q` to quit, `s` to stop a user
-- ✅ Graceful shutdown with FFmpeg conversion completion
-- ✅ Config file-based setup (no interactive prompts)
+- Monitor multiple TikTok users simultaneously
+- Auto-detect when a user goes live and start recording
+- Live TUI with color-coded status display
+- Add, stop, and restart users at runtime
+- Graceful shutdown with FFmpeg conversion completion
+- Config file-based setup
 
-## Requirements
-
-- [Bun](https://bun.sh) >= 1.2
-- [FFmpeg](https://ffmpeg.org) on \$PATH (for stream download)
-- TikTok `sessionid_ss` cookie (export from browser)
-
-## Setup
-
-### 1. Clone and install
+## Install
 
 ```bash
-git clone <your-repo>
-cd ttlive-manager
 bun install
+bun run link
 ```
 
-### 2. Create config
+This builds the project and registers `tokrec-tui` globally.
 
-Copy the example and edit:
+> [!PREREQUISITES]
+> - [Bun](https://bun.sh) >= 1.2
+> - [FFmpeg](https://ffmpeg.org) on `$PATH`
+> - TikTok `sessionid_ss` cookie (export from browser)
+
+## Usage
 
 ```bash
-cp ttlive.json.example ttlive.json
+tokrec-tui
 ```
 
-Required fields:
-- `users` — array of TikTok usernames to monitor
-- `cookiesPath` — path to your TikTok cookies (see below)
+The TUI displays a live status table:
 
-Optional fields:
-- `outputDir` — where recordings are saved (default: `./recordings`)
-- `interval` — how often to poll for live status in minutes (default: 3)
-- `duration` — max recording duration in seconds (default: 0 = unlimited)
+```
+  ┌─ User Status ──────────────────────────────┐
+  │ user1                    Recording          │
+  │ user2                    Polling            │
+  │ user3                    Idle               │
+  └─────────────────────────────────────────────┘
 
-### 3. Get TikTok cookies
+  [q] quit  [s] stop  [r] restart  [n] new
+```
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit (stops all recordings gracefully) |
+| `s` | Stop mode — select a user to stop |
+| `r` | Restart mode — select a user to restart |
+| `n` | New download — add a user at runtime |
+| `Ctrl+C` | Same as `q` |
+
+### Stop / Restart Mode
+
+When you press `s` or `r`, the TUI switches to a mode where you can type a username or number to stop/restart that user's recorder. Press Enter with blank input to return to monitoring.
+
+### New Download
+
+Press `n` to add a new user. Enter a TikTok username and it will be added to the monitor list and saved to `ttlive.json`.
+
+## Configuration
+
+Create a `ttlive.json` file in your working directory:
+
+```json
+{
+  "outputDir": "./recordings",
+  "interval": 3,
+  "users": ["tiktok_user1", "tiktok_user2"],
+  "cookiesPath": "./cookies.json",
+  "duration": 0
+}
+```
+
+### Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `outputDir` | `string` | `./recordings` | Directory for recorded files |
+| `interval` | `number` | `3` | Polling interval in minutes |
+| `users` | `string[]` | `[]` | TikTok usernames to monitor |
+| `cookiesPath` | `string` | — | Path to TikTok cookies file |
+| `duration` | `number` | `0` | Max recording duration in seconds (0 = unlimited) |
+
+### Cookies
 
 Export your TikTok `sessionid_ss` cookie as a JSON file:
 
@@ -54,44 +110,44 @@ Export your TikTok `sessionid_ss` cookie as a JSON file:
 }
 ```
 
-Place it at `./cookies.json` (or wherever `cookiesPath` points).
+Place it at `./cookies.json` or wherever `cookiesPath` points.
 
-## Usage
+## Development
 
 ```bash
+# Run in development mode
 bun run dev
+
+# Lint
+bun run lint
+
+# Format
+bun run format
+
+# Build
+bun run build
 ```
 
-This starts monitoring all configured users. The TUI shows:
+### Project Structure
 
 ```
-  ┌─ User Status ──────────────────────────┐
-  │ tiktok_user1           Recording       │
-  │ tiktok_user2           Polling         │
-  └─────────────────────────────────────────┘
-
-  [q] quit  [s] stop user
+src/
+  index.ts      Entry point
+  cli.ts        OpenTUI TUI renderer
+  manager.ts    tokrec wrapper
+  config.ts     Config loader/saver
+  types.ts      Type definitions
+  utils.ts      Helpers
+bin/
+  tokrec-tui    CLI entry point
 ```
 
-### Commands
+### Tech Stack
 
-| Key | Action |
-|-----|--------|
-| `q` | Quit (stops all recordings gracefully) |
-| `s` | Enter stop mode — select a user to stop |
-| `Ctrl+C` | Same as `q` |
-
-When you press `s`, the TUI switches to stop mode where you can type a username or number to stop that user's recorder. Press Enter with blank input to return to monitoring.
-
-## How It Works
-
-1. Reads configuration from `ttlive.json`
-2. Creates a `RecorderController` (from `@zfadhli/tokrec`) for each user
-3. Each recorder polls TikTok every N minutes to check live status
-4. When a user goes live, recording starts automatically via FFmpeg
-5. Tokrec handles: polling → recording → converting → polling (auto-recycle)
-6. The TUI refreshes every 2 seconds with color-coded status
-
-## License
-
-MIT
+- **Runtime**: [Bun](https://bun.sh)
+- **Language**: TypeScript (strict mode)
+- **TUI**: [@opentui/core](https://github.com/anomalyco/opentui)
+- **Recording**: [@zfadhli/tokrec](https://github.com/zfadhli/tokrec)
+- **Build**: [tsdown](https://github.com/rolldown/tsdown)
+- **Lint/Format**: [Biome](https://biomejs.dev)
+- **Git Hooks**: [Lefthook](https://github.com/evilmartians/lefthook)
