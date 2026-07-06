@@ -1,291 +1,164 @@
-import {
-	cancel,
-	group,
-	intro,
-	log,
-	multiselect,
-	outro,
-	select,
-	text,
-} from "@clack/prompts";
-import { CONFIG } from "./config.ts";
-import { DownloadManager } from "./manager";
-import { Terminal } from "./terminal";
-import type { Config } from "./types.ts";
-import { readFile, sleep } from "./utils.ts";
+import type { Manager } from "./manager.ts";
+import type { AppConfig } from "./config.ts";
+import { renderStatus } from "./terminal.ts";
+import { sleep } from "./utils.ts";
+
+const REFRESH_INTERVAL = 2000;
+const STOP_TIMEOUT = 5000;
 
 export class CLI {
-	private manager: DownloadManager;
-	private terminal: Terminal;
-	private users: string[] = [];
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private rawMode = false;
+  private shuttingDown = false;
 
-	constructor() {
-		this.manager = new DownloadManager();
-		this.terminal = new Terminal();
+  constructor(
+    private manager: Manager,
+    private config: AppConfig,
+  ) {}
 
-		this.manager.on("statusChange", (e) => {
-			if (e.status === "completed" || e.status === "error") {
-				this.terminal.resetThrottle();
-			}
-			this.terminal.renderStatus(this.manager.getAll());
-		});
-	}
+  async start(): Promise<void> {
+    if (this.config.users.length === 0) {
+      console.error("❌ No users in config — add users to ttlive.json");
+      process.exit(1);
+    }
 
-	async start(): Promise<void> {
-		intro("🎬 TikTok Livestream Manager");
+    console.log(`Starting monitoring for ${this.config.users.length} user(s)...\n`);
+    for (const user of this.config.users) {
+      this.manager.startUser(user, {
+        outputDir: this.config.outputDir,
+        interval: this.config.interval,
+        logConsole: false,
+        ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
+        ...(this.config.duration ? { duration: this.config.duration } : {}),
+      });
+    }
 
-		const config = await this.promptConfig();
-		this.users = readFile(config.userListFile);
+    this.setupInput();
+    this.setupRefresh();
+    await this.waitForQuit();
+  }
 
-		const continueFlow = await this.promptInitialUsers(config);
-		if (!continueFlow) {
-			outro("✨ Goodbye!");
-			return;
-		}
+  /** Public shutdown — restores terminal, stops all recorders. Safe to call multiple times. */
+  async shutdown(): Promise<void> {
+    if (this.shuttingDown) return;
+    this.shuttingDown = true;
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+    if (this.rawMode) {
+      process.stdin.setRawMode(false);
+      this.rawMode = false;
+    }
+    process.stdin.pause();
+    console.clear();
+    console.log("Shutting down...");
+    await Promise.race([this.manager.stopAll(), sleep(STOP_TIMEOUT)]);
+  }
 
-		await this.mainMenu(config);
-		outro("✨ Goodbye!");
-	}
+  private setupInput(): void {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      this.rawMode = true;
+    }
+    process.stdin.resume();
+    process.stdin.setEncoding("utf-8");
 
-	private async promptConfig(): Promise<{
-		commandPrefix: string;
-		outputPath: string;
-		userListFile: string;
-	}> {
-		const input = await group(
-			{
-				commandPrefix: () =>
-					text({
-						message: "Command prefix:",
-						placeholder: CONFIG.commandPrefix,
-						defaultValue: CONFIG.commandPrefix,
-					}),
-				outputPath: () =>
-					text({
-						message: "Output path:",
-						placeholder: CONFIG.outputPath,
-						defaultValue: CONFIG.outputPath,
-					}),
-				userListFile: () =>
-					text({
-						message: "Users list filename:",
-						placeholder: CONFIG.userListFile,
-						defaultValue: CONFIG.userListFile,
-					}),
-			},
-			{
-				onCancel: () => {
-					cancel("Operation cancelled.");
-					process.exit(0);
-				},
-			},
-		);
+    process.stdin.on("data", async (buf: Buffer) => {
+      const key = buf.toString();
+      if (key === "q" || key === "\x03") {
+        await this.shutdown();
+        process.exit(0);
+      }
+      if (key === "s") {
+        await this.handleStopMode();
+      }
+    });
+  }
 
-		return {
-			commandPrefix: input.commandPrefix,
-			outputPath: input.outputPath,
-			userListFile: input.userListFile,
-		};
-	}
+  private setupRefresh(): void {
+    this.refreshTimer = setInterval(() => {
+      this.renderFrame();
+    }, REFRESH_INTERVAL);
+    this.renderFrame();
+  }
 
-	private async promptInitialUsers(config: Config): Promise<boolean> {
-		if (!this.users.length) return true;
+  private renderFrame(): void {
+    const statuses = this.manager.getStatuses();
+    const output = renderStatus(statuses);
+    console.clear();
+    console.log(output);
+  }
 
-		log.info(
-			`\n📋 Found ${this.users.length} user${this.users.length > 1 ? "s" : ""} in ${config.userListFile}\n`,
-		);
+  // ponytail: line input only; multi-select / fuzzy-search / tab-complete if UX demands
+  private async handleStopMode(): Promise<void> {
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+    if (this.rawMode) process.stdin.setRawMode(false);
 
-		while (true) {
-			this.terminal.setMenuActive(true);
-			const action = await select({
-				message: "What would you like to do?",
-				options: [
-					{ value: "all", label: "🚀 Start all" },
-					{ value: "select", label: "🔎 Select users" },
-					{ value: "skip", label: "⏭️ Skip" },
-					{ value: "exit", label: "❌ Exit" },
-				],
-			});
-			this.terminal.setMenuActive(false);
+    console.clear();
+    console.log("  Stop Mode — choose a user to stop:\n");
+    const users = this.manager.getActiveUsers();
+    if (users.length === 0) {
+      console.log("  No active users.\n");
+      console.log("  Press Enter to return to monitoring...");
+      await this.waitForEnter();
+      this.resumeMonitoring();
+      return;
+    }
+    users.forEach((u, i) => console.log(`  ${i + 1}. ${u}`));
+    console.log("\n  Enter number or username (or blank to cancel):");
 
-			if (action === "exit") return false;
-			if (action === "skip") return true;
-			if (action === "all") {
-				await this.startUsers(this.users, config);
-				return true;
-			}
-			if (action === "select") {
-				const selected = await this.selectUsers();
-				if (selected.length > 0) {
-					await this.startUsers(selected, config);
-					return true;
-				}
-			}
-		}
-	}
+    const input = await this.readLine();
+    const trimmed = input.trim();
+    if (trimmed) {
+      const idx = Number.parseInt(trimmed, 10);
+      const target =
+        !Number.isNaN(idx) && idx >= 1 && idx <= users.length
+          ? users[idx - 1]
+          : trimmed;
+      if (target && users.includes(target)) {
+        try {
+          await this.manager.stopUser(target);
+          console.log(`  Stopped: ${target}`);
+        } catch {
+          console.log(`  Error stopping ${target}`);
+        }
+      } else {
+        console.log(`  Unknown user: ${trimmed}`);
+      }
+    }
 
-	private async mainMenu(config: Config): Promise<void> {
-		this.manager.startAutoRestart(config);
+    console.log("\n  Press Enter to return to monitoring...");
+    await this.waitForEnter();
+    this.resumeMonitoring();
+  }
 
-		while (true) {
-			this.terminal.renderStatus(this.manager.getAll());
+  private readLine(): Promise<string> {
+    return new Promise((resolve) => {
+      const onData = (chunk: Buffer) => {
+        const str = chunk.toString();
+        process.stdin.removeListener("data", onData);
+        resolve(str.replace(/[\r\n]/g, ""));
+      };
+      process.stdin.on("data", onData);
+    });
+  }
 
-			this.terminal.setMenuActive(true);
-			const action = await select({
-				message: "What would you like to do?",
-				options: [
-					{ value: "start", label: "➕ Start a new download" },
-					{ value: "stop", label: "⏹️ Stop a download" },
-					{ value: "restart", label: "🔄 Restart a download" },
-					{ value: "refresh", label: "🔁 Refresh screen" },
-					{ value: "exit", label: "❌ Exit" },
-				],
-			});
-			this.terminal.setMenuActive(false);
+  private waitForEnter(): Promise<void> {
+    return new Promise((resolve) => {
+      const onData = (chunk: Buffer) => {
+        process.stdin.removeListener("data", onData);
+        resolve();
+      };
+      process.stdin.on("data", onData);
+    });
+  }
 
-			switch (action) {
-				case "start":
-					await this.handleStart(config);
-					break;
-				case "stop":
-					await this.handleStop();
-					break;
-				case "restart":
-					await this.handleRestart(config);
-					break;
-				case "refresh":
-					this.terminal.renderStatus(this.manager.getAll());
-					break;
-				case "exit":
-					if (await this.confirmExit()) {
-						this.manager.stopAutoRestart();
-						return;
-					}
-					break;
-			}
-		}
-	}
+  private waitForQuit(): Promise<void> {
+    return new Promise(() => {});
+  }
 
-	private async handleStart(config: Config): Promise<void> {
-		this.terminal.setMenuActive(true);
-		const mode = await select({
-			message: "How would you like to start?",
-			options: [
-				{ value: "custom", label: "✏️ Enter username" },
-				{ value: "list", label: "📋 Select from users list" },
-			],
-		});
-		this.terminal.setMenuActive(false);
-
-		if (mode === "custom") {
-			const user = (await text({
-				message: "Username:",
-			})) as string;
-			if (user) {
-				await this.manager.start(user, config);
-			}
-		} else if (this.users.length) {
-			const selected = await this.selectUsers();
-			await this.startUsers(selected, config);
-		} else {
-			log.message("❌ No users loaded from file\n");
-			await sleep(600);
-		}
-
-		this.terminal.renderStatus(this.manager.getAll());
-	}
-
-	private async handleStop(): Promise<void> {
-		const running = this.manager.getRunning();
-		if (!running.length) {
-			log.message("❌ No running downloads\n");
-			await sleep(600);
-			return;
-		}
-
-		this.terminal.setMenuActive(true);
-		const selected = (await multiselect({
-			message: "Select download(s) to stop:",
-			options: running.map((d) => ({
-				value: d.id.toString(),
-				label: `@${d.user}`,
-			})),
-			required: false,
-		})) as string[];
-		this.terminal.setMenuActive(false);
-
-		for (const id of selected) {
-			await this.manager.stop(id);
-		}
-
-		this.terminal.renderStatus(this.manager.getAll());
-	}
-
-	private async handleRestart(config: Config): Promise<void> {
-		const all = this.manager.getAll();
-		if (!all.length) {
-			log.message("❌ No downloads to restart\n");
-			await sleep(600);
-			return;
-		}
-
-		this.terminal.setMenuActive(true);
-		const selected = (await multiselect({
-			message: "Select download(s) to restart:",
-			options: all.map((d) => ({
-				value: d.id.toString(),
-				label: `@${d.user}`,
-			})),
-			required: false,
-		})) as string[];
-		this.terminal.setMenuActive(false);
-
-		for (const id of selected) {
-			await this.manager.restart(id, config);
-		}
-
-		this.terminal.renderStatus(this.manager.getAll());
-	}
-
-	private async confirmExit(): Promise<boolean> {
-		const running = this.manager.getRunning();
-		if (!running.length) return true;
-
-		this.terminal.setMenuActive(true);
-		const confirm = await select({
-			message: "Running downloads exist. Exit anyway?",
-			options: [
-				{ value: "yes", label: "Yes, exit" },
-				{ value: "no", label: "No, go back" },
-			],
-		});
-		this.terminal.setMenuActive(false);
-
-		if (confirm === "yes") {
-			this.manager.stopAll();
-			return true;
-		}
-		return false;
-	}
-
-	private async selectUsers(): Promise<string[]> {
-		this.terminal.setMenuActive(true);
-		const selected = (await multiselect({
-			message: "Select users(s):",
-			options: this.users.map((user) => ({ value: user, label: user })),
-			required: false,
-		})) as string[];
-		this.terminal.setMenuActive(false);
-		return selected;
-	}
-
-	private async startUsers(users: string[], config: Config): Promise<void> {
-		for (const user of users) {
-			await this.manager.start(user, config);
-		}
-	}
-
-	getManager(): DownloadManager {
-		return this.manager;
-	}
+  private resumeMonitoring(): void {
+    if (process.stdin.isTTY && this.rawMode) {
+      process.stdin.setRawMode(true);
+    }
+    this.setupRefresh();
+  }
 }

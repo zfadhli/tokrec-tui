@@ -4,11 +4,15 @@
     "type": "module",
     "private": true,
     "scripts": {
-        "dev": "bun src/index.ts"
+        "dev": "bun src/index.ts",
+        "build": "chmod +x bin/ttlive",
+        "link": "bun run build && bun link"
+    },
+    "bin": {
+        "ttlive": "./bin/ttlive"
     },
     "dependencies": {
-        "@clack/prompts": "^0.11.0",
-        "eventemitter3": "^5.0.1"
+        "@zfadhli/tokrec": "^0.12.2"
     },
     "devDependencies": {
         "@types/bun": "latest"

@@ -1,27 +1,30 @@
-import { CLI } from "./cli";
+import { loadConfig } from "./config.ts";
+import { Manager } from "./manager.ts";
+import { CLI } from "./cli.ts";
 
 async function main(): Promise<void> {
-	const cli = new CLI();
+  const config = loadConfig();
+  const manager = new Manager();
+  const cli = new CLI(manager, config);
 
-	// Graceful immediate exit on Ctrl+C
-	const onSigint = (): void => {
-		try {
-			cli.getManager().stopAll();
-		} catch {}
-		console.log("\nInterrupted — stopped downloads and exiting.");
-		process.exit(0);
-	};
+  const onSigint = async () => {
+    await cli.shutdown();
+    process.exit(0);
+  };
 
-	process.on("SIGINT", onSigint);
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigint);
 
-	try {
-		await cli.start();
-	} catch (err) {
-		console.error("Fatal error:", err);
-		process.exitCode = 1;
-	} finally {
-		process.off("SIGINT", onSigint);
-	}
+  try {
+    await cli.start();
+  } catch (err) {
+    console.error("Fatal error:", err);
+    await cli.shutdown();
+    process.exit(1);
+  } finally {
+    process.off("SIGINT", onSigint);
+    process.off("SIGTERM", onSigint);
+  }
 }
 
 main();

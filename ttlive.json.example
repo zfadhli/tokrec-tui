@@ -1,0 +1,7 @@
+{
+  "outputDir": "./recordings",
+  "interval": 3,
+  "users": ["tiktok_user1", "tiktok_user2"],
+  "cookiesPath": "./cookies.json",
+  "duration": 0
+}

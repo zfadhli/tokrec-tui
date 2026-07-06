@@ -1,200 +1,44 @@
-import { spawn } from "bun";
-import EventEmitter from "eventemitter3";
-import { CONFIG } from "./config.ts";
-import { drainStream } from "./streams";
-import type { Config, Download, Status } from "./types.ts";
-import { rid, sleep } from "./utils.ts";
+import { createRecorder } from "@zfadhli/tokrec";
+import type { RecorderController, RecorderConfig } from "@zfadhli/tokrec";
+import type { AppStatus } from "./types.ts";
 
-export class DownloadManager extends EventEmitter {
-	private downloads = new Map<string, Download>();
-	private autoRestartInterval: NodeJS.Timeout | null = null;
+export class Manager {
+  private controllers = new Map<string, RecorderController>();
 
-	startAutoRestart(config: Config): void {
-		if (this.autoRestartInterval) return;
+  // ponytail: same config for all users; per-user overrides per proxy/cookies if needed
+  startUser(user: string, config: Omit<RecorderConfig, "user">): RecorderController {
+    if (this.controllers.has(user)) {
+      console.warn(`[${user}] already tracked — ignoring`);
+      return this.controllers.get(user)!;
+    }
+    const ctrl = createRecorder({ ...config, user });
+    this.controllers.set(user, ctrl);
+    // ponytail: async start() race — stopAll() called before start() body
+    // executes is silently ignored by tokrec. Not a live race in the TUI
+    // (2s refresh before user can interact), but guard defensively.
+    ctrl.start().catch((err) => console.error(`[${user}] error:`, err));
+    return ctrl;
+  }
 
-		this.autoRestartInterval = setInterval(() => {
-			this.checkAndRestartOldDownloads(config);
-		}, 60_000); // Check every minute
-	}
+  async stopUser(user: string): Promise<void> {
+    await this.controllers.get(user)?.stop();
+    this.controllers.delete(user);
+  }
 
-	stopAutoRestart(): void {
-		if (this.autoRestartInterval) {
-			clearInterval(this.autoRestartInterval);
-			this.autoRestartInterval = null;
-		}
-	}
+  async stopAll(): Promise<void> {
+    await Promise.allSettled([...this.controllers.keys()].map((u) => this.stopUser(u)));
+  }
 
-	private async checkAndRestartOldDownloads(config: Config): Promise<void> {
-		const now = Date.now();
-		const maxDuration = 30 * 60_000;
+  /** Returns a snapshot of active users mapped to their statuses. */
+  getStatuses(): Map<string, AppStatus> {
+    const result = new Map<string, AppStatus>();
+    for (const [user, ctrl] of this.controllers) {
+      result.set(user, ctrl.getStatus().state);
+    }
+    return result;
+  }
 
-		for (const download of this.downloads.values()) {
-			if (download.status === "downloading") {
-				const elapsed = now - download.startTime.getTime();
-				if (elapsed > maxDuration) {
-					await this.restart(download.id, config);
-
-					// Force status change event to trigger immediate render
-					this.emit("statusChange", {
-						id: download.id,
-						user: download.user,
-						status: "downloading",
-					});
-				}
-			}
-		}
-	}
-
-	async start(user: string, config: Config): Promise<string> {
-		const id = rid();
-
-		const proc = this.spawnProcess(user, config);
-		const download = this.createDownload(id, user, config.outputPath, proc);
-
-		this.downloads.set(id, download);
-		// biome-ignore lint/style/noNonNullAssertion: This value is guaranteed to be non-null by external logic.
-		const dl = this.downloads.get(id)!;
-		dl.status = "waiting";
-		this.emitStatus(id, dl.user, "waiting");
-
-		await sleep(CONFIG.delay);
-
-		dl.status = "downloading";
-		this.setupHandlers(proc, id, user);
-		this.emitStatus(id, user, "downloading");
-		return id;
-	}
-
-	async stop(id: string): Promise<boolean> {
-		console.log(`Stopping download ${id}`);
-		const dl = this.downloads.get(id);
-		if (!dl) return false;
-
-		await this.killProcess(dl.process);
-
-		dl.status = "stopped";
-		this.emitStatus(id, dl.user, "stopped");
-		await sleep(600);
-		return true;
-	}
-
-	async restart(id: string, config: Config): Promise<string | null> {
-		const dl = this.downloads.get(id);
-		if (!dl) return null;
-
-		await this.killProcess(dl.process);
-
-		const proc = this.spawnProcess(dl.user, config);
-
-		dl.process = proc;
-		dl.status = "waiting";
-		this.emitStatus(id, dl.user, "waiting");
-		await sleep(CONFIG.delay);
-
-		this.setupHandlers(proc, id, dl.user);
-		dl.status = "downloading";
-		dl.startTime = new Date();
-		this.emitStatus(id, dl.user, "downloading");
-		return id;
-	}
-
-	getAll(): Download[] {
-		return Array.from(this.downloads.values());
-	}
-
-	getRunning(): Download[] {
-		return this.getAll().filter((d) => d.status === "downloading");
-	}
-
-	stopAll(): void {
-		this.getRunning().forEach((d) => {
-			this.stop(d.id);
-		});
-	}
-
-	private spawnProcess(user: string, config: Config): ReturnType<typeof spawn> {
-		return spawn({
-			cmd: [
-				"bash",
-				"-c",
-				`${config.commandPrefix} -output "${config.outputPath}" -user "${user}"`,
-			],
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-	}
-
-	private createDownload(
-		id: string,
-		user: string,
-		outputPath: string,
-		proc: ReturnType<typeof spawn>,
-	): Download {
-		return {
-			id,
-			user,
-			status: "downloading",
-			process: proc,
-			startTime: new Date(),
-			outputPath,
-		};
-	}
-
-	private async killProcess(
-		proc: ReturnType<typeof spawn> | undefined,
-	): Promise<void> {
-		if (!proc) return;
-		try {
-			proc.kill();
-			await sleep(600);
-		} catch {
-			/* continue */
-		}
-	}
-
-	private setupHandlers(
-		proc: ReturnType<typeof spawn>,
-		id: string,
-		user: string,
-	): void {
-		proc.exited
-			.then((code) => {
-				const dl = this.downloads.get(id);
-				if (!dl) return;
-				if (dl.status === "downloading") {
-					dl.status = code === 0 ? "completed" : "error";
-					this.emitStatus(id, user, dl.status);
-				}
-
-				// Ensure process is killed after completion
-				this.killProcess(proc).catch(() => {
-					/* ignore */
-				});
-			})
-			.catch((err: unknown) => {
-				const dl = this.downloads.get(id);
-				if (!dl) return;
-				dl.status = "error";
-				this.emitStatus(id, user, "error");
-				console.error(`[${id}] process error: ${String(err)}`);
-				this.killProcess(proc).catch(() => {
-					/* ignore */
-				});
-			});
-
-		if (proc.stdout) {
-			void drainStream(proc.stdout).catch(() => {
-				/* ignore */
-			});
-		}
-		if (proc.stderr) {
-			void drainStream(proc.stderr).catch(() => {
-				/* ignore */
-			});
-		}
-	}
-
-	private emitStatus(id: string, user: string, status: Status): void {
-		this.emit("statusChange", { id, user, status });
-	}
+  getActiveUsers(): string[] {
+    return [...this.controllers.keys()];
+  }
 }

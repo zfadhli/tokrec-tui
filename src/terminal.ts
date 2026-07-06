@@ -1,73 +1,42 @@
-import { log } from "@clack/prompts";
-import type { Download } from "./types.ts";
-import { formatElapsed } from "./utils.ts";
+import type { AppStatus } from "./types.ts";
 
-export class Terminal {
-	private lastRender = 0;
-	private isMenuActive = false;
+const stateLabels: Record<AppStatus, string> = {
+  idle: "Idle",
+  polling: "Polling",
+  recording: "Recording",
+  converting: "Converting",
+  stopped: "Stopped",
+  error: "Error",
+};
 
-	setMenuActive(active: boolean): void {
-		this.isMenuActive = active;
-	}
+const stateColors: Record<AppStatus, string> = {
+  idle: "\x1b[90m",
+  polling: "\x1b[36m",
+  recording: "\x1b[32m",
+  converting: "\x1b[33m",
+  stopped: "\x1b[90m",
+  error: "\x1b[31m",
+};
 
-	resetThrottle(): void {
-		this.lastRender = 0;
-	}
+const reset = "\x1b[0m";
 
-	renderStatus(downloads: Download[]): void {
-		const now = Date.now();
-		if (now - this.lastRender < 250) return;
-		this.lastRender = now;
+export function renderStatus(statuses: Map<string, AppStatus>): string {
+  if (statuses.size === 0) return "  No users configured.\n";
 
-		if (this.isMenuActive) {
-			this.saveCursor();
-		} else {
-			console.clear();
-		}
+  const lines: string[] = ["  \u250c\u2500 User Status \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510"];
 
-		log.step("📊 Download Status:\n");
-		this.renderDownloads(downloads);
+  const order = ["recording", "converting", "polling", "idle", "stopped", "error"];
+  const entries = [...statuses.entries()].sort((a, b) => order.indexOf(a[1]) - order.indexOf(b[1]));
 
-		if (this.isMenuActive) {
-			this.restoreCursor();
-		}
-	}
+  for (const [user, state] of entries) {
+    const color = stateColors[state] ?? "";
+    const label = stateLabels[state] ?? state;
+    lines.push(`  \u2502 ${color}${user.padEnd(24)} ${label.padEnd(11)}${reset} \u2502`);
+  }
 
-	private renderDownloads(downloads: Download[]): void {
-		if (downloads.length === 0) {
-			log.message("No downloads yet\n");
-			return;
-		}
+  lines.push("  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
+  lines.push("");
+  lines.push("  \x1b[90m[q] quit  [s] stop user\x1b[0m");
 
-		const icons: Record<string, string> = {
-			waiting: "⏳",
-			downloading: "📥",
-			completed: "✅",
-			stopped: "🛑",
-			error: "❌",
-		};
-
-		downloads.forEach((d) => {
-			const icon = icons[d.status] ?? icons.error;
-			const elapsed =
-				d.status === "downloading" ? formatElapsed(d.startTime) : "";
-			const line = [
-				`   ${icon}`,
-				`[${d.id}]`,
-				`@${d.user.padEnd(30)}`,
-				d.status.padEnd(13),
-				elapsed,
-			].join(" ");
-			console.log(line);
-		});
-	}
-
-	private saveCursor(): void {
-		process.stdout.write("\x1b[s");
-		process.stdout.write("\x1b[0;0H");
-	}
-
-	private restoreCursor(): void {
-		process.stdout.write("\x1b[u");
-	}
+  return lines.join("\n");
 }

@@ -1,26 +1,5 @@
-import { readFileSync } from "node:fs";
-
 export function sleep(ms: number): Promise<void> {
-	return new Promise((r) => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-export function readFile(filePath: string): string[] {
-	return readFileSync(filePath, "utf-8")
-		.split("\n")
-		.map((s) => s.trim())
-		.filter((s) => s && !s.startsWith("#"));
-}
 
-export function formatElapsed(start: Date): string {
-	const diff = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
-	const hrs = Math.floor(diff / 3600);
-	const mins = Math.floor((diff % 3600) / 60);
-	const secs = diff % 60;
-	if (hrs > 0) return `${hrs}h ${mins}m`;
-	if (mins > 0) return `${mins}m ${secs}s`;
-	return `${secs}s`;
-}
-
-export function rid(length: number = 6): string {
-	return [...Array(length)].map(() => Math.random().toString(36)[2]).join("");
-}
