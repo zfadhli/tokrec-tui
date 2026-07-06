@@ -74,11 +74,11 @@ When you press `s` or `r`, the TUI switches to a mode where you can type a usern
 
 ### New Download
 
-Press `n` to add a new user. Enter a TikTok username and it will be added to the monitor list and saved to `ttlive.json`.
+Press `n` to add a new user. Enter a TikTok username and it will be added to the monitor list and saved to `tokrec.json`.
 
 ## Configuration
 
-Create a `ttlive.json` file in your working directory:
+Create a `tokrec.json` file in your working directory:
 
 ```json
 {

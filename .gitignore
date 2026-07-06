@@ -36,7 +36,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 users.txt
 
 # config & runtime
-ttlive.json
+tokrec.json
+tokrec.jsonc
 recordings/
 *.log
 

@@ -11,7 +11,7 @@ src/
   index.ts      – Entry point, SIGINT/SIGTERM wiring
   cli.ts        – TUI: OpenTUI renderer, Box/Text components, keyInput handler
   manager.ts    – Thin wrapper around tokrec's createRecorder() per user
-  config.ts     – Loads/saves ttlive.json, validates, merges with defaults
+  config.ts     – Loads/saves tokrec.json, validates, merges with defaults
   types.ts      – AppStatus type alias (from tokrec's RecorderState + "error")
   utils.ts      – sleep() helper
 bin/
@@ -22,7 +22,7 @@ bin/
 - `@zfadhli/tokrec` — handles TikTok scraping, polling, FFmpeg spawning, and stream conversion. Our code creates one `RecorderController` per user via `createRecorder()`.
 - `@opentui/core` — native Zig TUI renderer with Box/Text/Input components, keyInput events, and flexbox layout.
 
-**Config**: JSON file (`ttlive.json`) in the working directory. Fields: `outputDir`, `interval`, `users[]`, `cookiesPath`, `duration`.
+**Config**: JSON file (`tokrec.json`) in the working directory. Fields: `outputDir`, `interval`, `users[]`, `cookiesPath`, `duration`.
 
 ## Setup Commands
 
@@ -32,7 +32,7 @@ bin/
 
 ## Development Workflow
 
-- Run locally: `bun src/index.ts` (requires `ttlive.json` in cwd)
+- Run locally: `bun src/index.ts` (requires `tokrec.json` in cwd)
 - TypeScript check: `bun build --no-bundle src/index.ts`
 - Lint: `bun run lint`
 - Format: `bun run format`
