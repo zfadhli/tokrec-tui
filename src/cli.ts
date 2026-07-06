@@ -89,7 +89,8 @@ export class CLI {
     this.renderer.root.add(container);
 
     // Extract actual renderables from the mounted tree
-    this.statusContainer = this.renderer.root.getChildren()[0] ?? null;
+    // Index 0 = banner, index 1 = status container
+    this.statusContainer = this.renderer.root.getChildren()[1] ?? null;
     const children = this.statusContainer?.getChildren() ?? [];
     for (let i = 0; i < this.config.users.length; i++) {
       const child = children[i];
