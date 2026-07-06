@@ -222,9 +222,9 @@ export class CLI {
       width: 50,
     });
 
-    const users = this.manager.getActiveUsers();
+    const users = this.config.users;
     if (users.length === 0) {
-      restartBox.add(Text({ content: "  No active users." }));
+      restartBox.add(Text({ content: "  No configured users." }));
       restartBox.add(Text({ content: "  Press Enter to return..." }));
       restartBox.add(Input({ placeholder: "" }));
       this.renderer.root.add(restartBox);
