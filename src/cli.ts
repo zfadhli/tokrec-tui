@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type {
   CliRenderer,
   InputRenderable,
@@ -59,8 +60,9 @@ export class CLI {
     }
 
     // Build component tree — all users show "Idle" until downloads start
+    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
     const banner = Text({
-      content: "  tokrec-tui",
+      content: `  tokrec-tui v${pkg.version}`,
       fg: "cyan",
     });
     this.renderer.root.add(banner);
