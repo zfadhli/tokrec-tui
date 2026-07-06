@@ -1,6 +1,6 @@
+import { CLI } from "./cli.ts";
 import { loadConfig } from "./config.ts";
 import { Manager } from "./manager.ts";
-import { CLI } from "./cli.ts";
 
 async function main(): Promise<void> {
   const config = loadConfig();

@@ -1,5 +1,5 @@
+import type { RecorderConfig, RecorderController } from "@zfadhli/tokrec";
 import { createRecorder } from "@zfadhli/tokrec";
-import type { RecorderController, RecorderConfig } from "@zfadhli/tokrec";
 import type { AppStatus } from "./types.ts";
 
 export class Manager {

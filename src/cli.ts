@@ -1,7 +1,13 @@
-import { createCliRenderer, Box, Text, Input, vstyles } from "@opentui/core";
-import type { CliRenderer, KeyEvent, Renderable, TextRenderable, InputRenderable } from "@opentui/core";
-import type { Manager } from "./manager.ts";
+import type {
+  CliRenderer,
+  InputRenderable,
+  KeyEvent,
+  Renderable,
+  TextRenderable,
+} from "@opentui/core";
+import { Box, createCliRenderer, Input, Text } from "@opentui/core";
 import type { AppConfig } from "./config.ts";
+import type { Manager } from "./manager.ts";
 import type { AppStatus } from "./types.ts";
 
 const REFRESH_MS = 2000;
@@ -70,10 +76,12 @@ export class CLI {
       container.add(Text({ content: `  ${user.padEnd(24)} Idle` }));
     }
 
-    container.add(Text({
-      content: "  [q] quit  [s] stop user",
-      fg: "gray",
-    }));
+    container.add(
+      Text({
+        content: "  [q] quit  [s] stop user",
+        fg: "gray",
+      }),
+    );
 
     this.renderer.root.add(container);
 
@@ -145,7 +153,7 @@ export class CLI {
       inputRenderable.focus();
 
       inputVNode.on("enter", () => {
-        this.renderer!.root.remove(stopRenderable as any);
+        this.renderer?.root.remove(stopRenderable as any);
         this.statusContainer!.visible = true;
       });
       return;
@@ -173,14 +181,12 @@ export class CLI {
       if (value) {
         const idx = Number.parseInt(value, 10);
         const target =
-          !Number.isNaN(idx) && idx >= 1 && idx <= users.length
-            ? users[idx - 1]
-            : value;
+          !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
         if (target && users.includes(target)) {
           this.manager.stopUser(target).catch(() => {});
         }
       }
-      this.renderer!.root.remove(stopRenderable as any);
+      this.renderer?.root.remove(stopRenderable as any);
       this.statusContainer!.visible = true;
     });
   }
@@ -190,6 +196,9 @@ export class CLI {
     this.shuttingDown = true;
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     this.renderer?.destroy();
-    await Promise.race([this.manager.stopAll(), new Promise(r => setTimeout(r, SHUTDOWN_TIMEOUT))]);
+    await Promise.race([
+      this.manager.stopAll(),
+      new Promise((r) => setTimeout(r, SHUTDOWN_TIMEOUT)),
+    ]);
   }
 }

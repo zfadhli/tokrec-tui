@@ -1,0 +1,5 @@
+pre-commit:
+  commands:
+    check:
+      glob: "*.{js,ts,json,css}"
+      run: bunx biome check --write {staged_files} && git add {staged_files}
