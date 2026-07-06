@@ -25,6 +25,12 @@ export class Manager {
     this.controllers.delete(user);
   }
 
+  restartUser(user: string, config: Omit<RecorderConfig, "user">): void {
+    this.stopUser(user).then(() => {
+      this.startUser(user, config);
+    });
+  }
+
   async stopAll(): Promise<void> {
     await Promise.allSettled([...this.controllers.keys()].map((u) => this.stopUser(u)));
   }

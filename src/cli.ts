@@ -30,6 +30,7 @@ export class CLI {
   private statusContainer: Renderable | null = null;
   private shuttingDown = false;
   private inStopMode = false;
+  private inRestartMode = false;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -70,7 +71,7 @@ export class CLI {
 
     container.add(
       Text({
-        content: "  [q] quit  [s] stop user",
+        content: "  [q] quit  [s] stop  [r] restart",
         fg: "gray",
       }),
     );
@@ -88,12 +89,15 @@ export class CLI {
     // Keyboard handling
     this.renderer.keyInput.on("keypress", (event: KeyEvent) => {
       if (event.name === "q" || (event.ctrl && event.name === "c")) {
-        if (!this.inStopMode) {
+        if (!this.inStopMode && !this.inRestartMode) {
           this.shutdown().then(() => process.exit(0));
         }
       }
-      if (event.name === "s" && !this.inStopMode) {
+      if (event.name === "s" && !this.inStopMode && !this.inRestartMode) {
         this.handleStopMode();
+      }
+      if (event.name === "r" && !this.inStopMode && !this.inRestartMode) {
+        this.handleRestartMode();
       }
     });
 
@@ -199,6 +203,77 @@ export class CLI {
       this.renderer?.root.remove(stopRenderable as any);
       this.statusContainer!.visible = true;
       this.inStopMode = false;
+    });
+  }
+
+  private handleRestartMode(): void {
+    if (!this.renderer || this.inRestartMode) return;
+    this.inRestartMode = true;
+
+    // Hide status container
+    this.statusContainer!.visible = false;
+
+    // Build restart mode UI
+    const restartBox = Box({
+      flexDirection: "column",
+      borderStyle: "rounded",
+      title: "Restart Mode",
+      padding: 1,
+      width: 50,
+    });
+
+    const users = this.manager.getActiveUsers();
+    if (users.length === 0) {
+      restartBox.add(Text({ content: "  No active users." }));
+      restartBox.add(Text({ content: "  Press Enter to return..." }));
+      restartBox.add(Input({ placeholder: "" }));
+      this.renderer.root.add(restartBox);
+
+      const restartRenderable = this.renderer.root.getChildren().at(-1);
+      if (!restartRenderable) return;
+      const inputRenderable = restartRenderable.getChildren().at(-1) as InputRenderable;
+      inputRenderable.value = "";
+      queueMicrotask(() => inputRenderable.focus());
+      inputRenderable.on("enter", () => {
+        this.renderer?.root.remove(restartRenderable as any);
+        this.statusContainer!.visible = true;
+        this.inRestartMode = false;
+      });
+      return;
+    }
+
+    users.forEach((u, i) => {
+      restartBox.add(Text({ content: `  ${i + 1}. ${u}` }));
+    });
+    restartBox.add(Text({ content: "" }));
+    restartBox.add(Text({ content: "  Enter number or username (blank to cancel):" }));
+    restartBox.add(Input({ placeholder: "" }));
+    this.renderer.root.add(restartBox);
+
+    const restartRenderable = this.renderer.root.getChildren().at(-1);
+    if (!restartRenderable) return;
+    const inputRenderable = restartRenderable.getChildren().at(-1) as InputRenderable;
+    inputRenderable.value = "";
+    queueMicrotask(() => inputRenderable.focus());
+    inputRenderable.on("enter", () => {
+      const value = inputRenderable.value.trim();
+      if (value) {
+        const idx = Number.parseInt(value, 10);
+        const target =
+          !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
+        if (target && users.includes(target)) {
+          this.manager.restartUser(target, {
+            outputDir: this.config.outputDir,
+            interval: this.config.interval,
+            logConsole: false,
+            ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
+            ...(this.config.duration ? { duration: this.config.duration } : {}),
+          });
+        }
+      }
+      this.renderer?.root.remove(restartRenderable as any);
+      this.statusContainer!.visible = true;
+      this.inRestartMode = false;
     });
   }
 
