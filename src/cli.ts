@@ -156,21 +156,25 @@ export class CLI {
       stopBox.add(Text({ content: "  No active users." }));
       stopBox.add(Text({ content: "  Press Enter to return..." }));
 
-      const inputVNode = Input({ placeholder: "" });
-      stopBox.add(inputVNode);
+      stopBox.add(
+        Input({
+          placeholder: "",
+          onSubmit: () => {
+            const stopRenderable = this.renderer?.root.getChildren().at(-1);
+            if (stopRenderable) this.renderer?.root.remove(stopRenderable as any);
+            this.statusContainer!.visible = true;
+            this.inStopMode = false;
+          },
+        }),
+      );
       this.renderer.root.add(stopBox);
 
-      // Extract actual InputRenderable
+      // Focus the input
       const stopRenderable = this.renderer.root.getChildren().at(-1);
-      if (!stopRenderable) return;
-      const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
-      inputRenderable.focus();
-
-      inputVNode.on("enter", () => {
-        this.renderer?.root.remove(stopRenderable as any);
-        this.statusContainer!.visible = true;
-        this.inStopMode = false;
-      });
+      if (stopRenderable) {
+        const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
+        inputRenderable?.focus();
+      }
       return;
     }
 
@@ -180,31 +184,37 @@ export class CLI {
     stopBox.add(Text({ content: "" }));
     stopBox.add(Text({ content: "  Enter number or username (blank to cancel):" }));
 
-    const inputVNode = Input({ placeholder: "" });
-    stopBox.add(inputVNode);
+    stopBox.add(
+      Input({
+        placeholder: "",
+        onSubmit: () => {
+          const stopRenderable = this.renderer?.root.getChildren().at(-1);
+          if (!stopRenderable) return;
+          const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
+          const value = inputRenderable?.value?.trim() ?? "";
+
+          if (value) {
+            const idx = Number.parseInt(value, 10);
+            const target =
+              !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
+            if (target && users.includes(target)) {
+              this.manager.stopUser(target).catch(() => {});
+            }
+          }
+          this.renderer?.root.remove(stopRenderable as any);
+          this.statusContainer!.visible = true;
+          this.inStopMode = false;
+        },
+      }),
+    );
     this.renderer.root.add(stopBox);
 
-    // Extract actual renderables
+    // Focus the input
     const stopRenderable = this.renderer.root.getChildren().at(-1);
-    if (!stopRenderable) return;
-    const children = stopRenderable.getChildren();
-    const inputRenderable = children[children.length - 1] as InputRenderable;
-    inputRenderable.focus();
-
-    inputVNode.on("enter", () => {
-      const value = inputRenderable.value.trim();
-      if (value) {
-        const idx = Number.parseInt(value, 10);
-        const target =
-          !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
-        if (target && users.includes(target)) {
-          this.manager.stopUser(target).catch(() => {});
-        }
-      }
-      this.renderer?.root.remove(stopRenderable as any);
-      this.statusContainer!.visible = true;
-      this.inStopMode = false;
-    });
+    if (stopRenderable) {
+      const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
+      inputRenderable?.focus();
+    }
   }
 
   async shutdown(): Promise<void> {
