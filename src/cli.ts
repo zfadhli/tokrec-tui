@@ -29,6 +29,7 @@ export class CLI {
   private userRenderables = new Map<string, TextRenderable>();
   private statusContainer: Renderable | null = null;
   private shuttingDown = false;
+  private inStopMode = false;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -87,9 +88,11 @@ export class CLI {
     // Keyboard handling
     this.renderer.keyInput.on("keypress", (event: KeyEvent) => {
       if (event.name === "q" || (event.ctrl && event.name === "c")) {
-        this.shutdown().then(() => process.exit(0));
+        if (!this.inStopMode) {
+          this.shutdown().then(() => process.exit(0));
+        }
       }
-      if (event.name === "s") {
+      if (event.name === "s" && !this.inStopMode) {
         this.handleStopMode();
       }
     });
@@ -133,7 +136,8 @@ export class CLI {
   }
 
   private handleStopMode(): void {
-    if (!this.renderer) return;
+    if (!this.renderer || this.inStopMode) return;
+    this.inStopMode = true;
 
     // Hide status container
     this.statusContainer!.visible = false;
@@ -165,6 +169,7 @@ export class CLI {
       inputVNode.on("enter", () => {
         this.renderer?.root.remove(stopRenderable as any);
         this.statusContainer!.visible = true;
+        this.inStopMode = false;
       });
       return;
     }
@@ -198,6 +203,7 @@ export class CLI {
       }
       this.renderer?.root.remove(stopRenderable as any);
       this.statusContainer!.visible = true;
+      this.inStopMode = false;
     });
   }
 
