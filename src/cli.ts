@@ -42,22 +42,7 @@ export class CLI {
       process.exit(1);
     }
 
-    // Start all recorders sequentially with delay
-    for (let i = 0; i < this.config.users.length; i++) {
-      const user = this.config.users[i]!;
-      this.manager.startUser(user, {
-        outputDir: this.config.outputDir,
-        interval: this.config.interval,
-        logConsole: false,
-        ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
-        ...(this.config.duration ? { duration: this.config.duration } : {}),
-      });
-      if (i < this.config.users.length - 1) {
-        await sleep(STARTUP_DELAY);
-      }
-    }
-
-    // Create renderer
+    // Create renderer first — TUI appears immediately
     try {
       this.renderer = await createCliRenderer({
         exitOnCtrlC: false,
@@ -69,7 +54,7 @@ export class CLI {
       process.exit(1);
     }
 
-    // Build component tree with VNodes
+    // Build component tree — all users show "Idle" until downloads start
     const container = Box({
       flexDirection: "column",
       borderStyle: "rounded",
@@ -114,8 +99,27 @@ export class CLI {
     this.refreshStatus();
     this.refreshTimer = setInterval(() => this.refreshStatus(), REFRESH_MS);
 
+    // Start downloads sequentially in background (non-blocking)
+    this.startDownloads();
+
     // Keep process alive
     await new Promise(() => {});
+  }
+
+  private async startDownloads(): Promise<void> {
+    for (let i = 0; i < this.config.users.length; i++) {
+      const user = this.config.users[i]!;
+      this.manager.startUser(user, {
+        outputDir: this.config.outputDir,
+        interval: this.config.interval,
+        logConsole: false,
+        ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
+        ...(this.config.duration ? { duration: this.config.duration } : {}),
+      });
+      if (i < this.config.users.length - 1) {
+        await sleep(STARTUP_DELAY);
+      }
+    }
   }
 
   private refreshStatus(): void {
