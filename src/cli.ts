@@ -162,7 +162,8 @@ export class CLI {
       if (!stopRenderable) return;
       const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
       inputRenderable.value = "";
-      inputRenderable.focus();
+      // Delay focus by one tick so the triggering keystroke ("s") is consumed first
+      queueMicrotask(() => inputRenderable.focus());
       inputRenderable.on("enter", () => {
         this.renderer?.root.remove(stopRenderable as any);
         this.statusContainer!.visible = true;
@@ -183,7 +184,8 @@ export class CLI {
     if (!stopRenderable) return;
     const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
     inputRenderable.value = "";
-    inputRenderable.focus();
+    // Delay focus by one tick so the triggering keystroke ("s") is consumed first
+    queueMicrotask(() => inputRenderable.focus());
     inputRenderable.on("enter", () => {
       const value = inputRenderable.value.trim();
       if (value) {
