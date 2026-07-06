@@ -31,6 +31,7 @@ export class CLI {
   private shuttingDown = false;
   private inStopMode = false;
   private inRestartMode = false;
+  private inNewMode = false;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -71,7 +72,7 @@ export class CLI {
 
     container.add(
       Text({
-        content: "  [q] quit  [s] stop  [r] restart",
+        content: "  [q] quit  [s] stop  [r] restart  [n] new",
         fg: "gray",
       }),
     );
@@ -88,16 +89,20 @@ export class CLI {
 
     // Keyboard handling
     this.renderer.keyInput.on("keypress", (event: KeyEvent) => {
+      const inAnyMode = this.inStopMode || this.inRestartMode || this.inNewMode;
       if (event.name === "q" || (event.ctrl && event.name === "c")) {
-        if (!this.inStopMode && !this.inRestartMode) {
+        if (!inAnyMode) {
           this.shutdown().then(() => process.exit(0));
         }
       }
-      if (event.name === "s" && !this.inStopMode && !this.inRestartMode) {
+      if (event.name === "s" && !inAnyMode) {
         this.handleStopMode();
       }
-      if (event.name === "r" && !this.inStopMode && !this.inRestartMode) {
+      if (event.name === "r" && !inAnyMode) {
         this.handleRestartMode();
+      }
+      if (event.name === "n" && !inAnyMode) {
+        this.handleNewMode();
       }
     });
 
@@ -274,6 +279,66 @@ export class CLI {
       this.renderer?.root.remove(restartRenderable as any);
       this.statusContainer!.visible = true;
       this.inRestartMode = false;
+    });
+  }
+
+  private handleNewMode(): void {
+    if (!this.renderer || this.inNewMode) return;
+    this.inNewMode = true;
+
+    // Hide status container
+    this.statusContainer!.visible = false;
+
+    // Build new mode UI
+    const newBox = Box({
+      flexDirection: "column",
+      borderStyle: "rounded",
+      title: "New Download",
+      padding: 1,
+      width: 50,
+    });
+
+    newBox.add(Text({ content: "  Enter TikTok username to monitor:" }));
+    newBox.add(Input({ placeholder: "" }));
+    this.renderer.root.add(newBox);
+
+    const newRenderable = this.renderer.root.getChildren().at(-1);
+    if (!newRenderable) return;
+    const inputRenderable = newRenderable.getChildren().at(-1) as InputRenderable;
+    inputRenderable.value = "";
+    queueMicrotask(() => inputRenderable.focus());
+    inputRenderable.on("enter", () => {
+      const value = inputRenderable.value.trim();
+      if (value) {
+        this.addNewUser(value);
+      }
+      this.renderer?.root.remove(newRenderable as any);
+      this.statusContainer!.visible = true;
+      this.inNewMode = false;
+    });
+  }
+
+  private addNewUser(user: string): void {
+    if (!this.statusContainer) return;
+
+    // Add text renderable for new user
+    const newText = Text({ content: `  ${user.padEnd(24)} Idle` });
+    this.statusContainer.add(newText);
+
+    // Extract the actual renderable and add to map
+    const children = this.statusContainer.getChildren();
+    const renderable = children[children.length - 2] as TextRenderable; // -2 because footer is last
+    if (renderable) {
+      this.userRenderables.set(user, renderable);
+    }
+
+    // Start the recorder
+    this.manager.startUser(user, {
+      outputDir: this.config.outputDir,
+      interval: this.config.interval,
+      logConsole: false,
+      ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
+      ...(this.config.duration ? { duration: this.config.duration } : {}),
     });
   }
 
