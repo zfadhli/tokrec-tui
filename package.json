@@ -6,11 +6,10 @@
   "private": true,
   "scripts": {
     "dev": "bun src/index.ts",
-    "build": "chmod +x bin/ttlive",
+    "build": "tsdown && chmod +x bin/ttlive",
     "link": "bun run build && bun link",
     "lint": "bunx biome check src/",
-    "format": "bunx biome format --write src/",
-    "build:lib": "tsdown"
+    "format": "bunx biome format --write src/"
   },
   "bin": {
     "ttlive": "./bin/ttlive"

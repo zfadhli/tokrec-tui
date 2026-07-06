@@ -1,4 +1,3 @@
 #!/usr/bin/env bun
-// Thin wrapper — imports and runs the project entry point.
-// Import path is relative to this file's location in the project.
-await import("../src/index.ts");
+// Built CLI entry point — runs the bundled output.
+await import("../dist/index.mjs");
