@@ -17,9 +17,9 @@ const SHUTDOWN_TIMEOUT = 5000;
 const STARTUP_DELAY = 5000;
 
 const stateColors: Record<AppStatus, string> = {
-  recording: "green",
+  recording: "cyan",
   converting: "yellow",
-  polling: "cyan",
+  polling: "white",
   idle: "gray",
   stopped: "gray",
   error: "red",
