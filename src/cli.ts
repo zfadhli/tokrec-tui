@@ -148,8 +148,10 @@ export class CLI {
     const statuses = this.manager.getStatuses();
     for (const [user, renderable] of this.userRenderables) {
       const state = statuses.get(user) ?? "idle";
-      const color = stateColors[state] ?? "gray";
-      renderable.content = `  ${user.padEnd(24)} ${state}`;
+      const lastError = this.manager.getLastError(user);
+      const color = lastError ? "red" : (stateColors[state] ?? "gray");
+      const label = lastError ? `error: ${lastError.slice(0, 24)}` : state;
+      renderable.content = `  ${user.padEnd(24)} ${label}`;
       renderable.fg = color;
     }
   }
