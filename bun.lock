@@ -6,7 +6,7 @@
       "name": "ttlive-manager",
       "dependencies": {
         "@opentui/core": "^0.4.3",
-        "@zfadhli/tokrec": "^0.12.2",
+        "@zfadhli/tokrec": "^0.13.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.5.2",
@@ -136,7 +136,7 @@
 
     "@zfadhli/koko-cli": ["@zfadhli/koko-cli@0.2.1", "", { "dependencies": { "cac": "^7.0.0", "cli-progress": "^3.12.0", "cli-spinners": "^3.4.0", "picocolors": "^1.1.1" } }, "sha512-OMG5O94yeC5Nti06dQn/5clCiP0cwsaD0/B0UjqPtTzcQB7PVtO58gaC1DAMAjy49I93GLWrV8cW5kEU6mEIvg=="],
 
-    "@zfadhli/tokrec": ["@zfadhli/tokrec@0.12.2", "", { "dependencies": { "@zfadhli/koko-cli": "^0.2.1", "execa": "^9.6.1", "peaknorm": "^0.7.0", "wreq-js": "^2.3.1" }, "bin": { "tokrec": "dist/bin.mjs" } }, "sha512-jSSd1sDBFw75nIfHYLv0m1fnVQGMy0wQ5FQHk55gjC5LcP7JBfLye66mhXboE/35XOdNCgCQn5tj1SH1z5IPqg=="],
+    "@zfadhli/tokrec": ["@zfadhli/tokrec@0.13.0", "", { "dependencies": { "@zfadhli/koko-cli": "^0.2.1", "execa": "^9.6.1", "peaknorm": "^0.7.0", "wreq-js": "^2.3.1" }, "bin": { "tokrec": "dist/bin.mjs" } }, "sha512-FcW2+1AZYoXJEUTIhHPzOUSQzoY0xJwzvYTeDqbR46kiBhEJLjkWBoJl6vSKkSpLr5N7pJtIlNBkfzCHzkrVlA=="],
 
     "ansi-regex": ["ansi-regex@6.2.2", "", {}, "sha512-Bq3SmSpyFHaWjPk8If9yc6svM8c56dB5BAtW4Qbw5jHTwwXXcTLoRMkpDJp6VL0XzlWaCHTXrkFURMYmD0sLqg=="],
 

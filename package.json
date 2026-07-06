@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@opentui/core": "^0.4.3",
-    "@zfadhli/tokrec": "^0.12.2"
+    "@zfadhli/tokrec": "^0.13.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
