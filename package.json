@@ -6,13 +6,13 @@
   "private": true,
   "scripts": {
     "dev": "bun src/index.ts",
-    "build": "tsdown && chmod +x bin/ttlive",
+    "build": "tsdown && chmod +x bin/tokrec-tui",
     "link": "bun run build && bun link",
     "lint": "bunx biome check src/",
     "format": "bunx biome format --write src/"
   },
   "bin": {
-    "ttlive": "./bin/ttlive"
+    "tokrec-tui": "./bin/tokrec-tui"
   },
   "dependencies": {
     "@opentui/core": "^0.4.3",
