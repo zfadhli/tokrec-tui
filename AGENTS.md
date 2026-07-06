@@ -9,13 +9,13 @@ Bun + TypeScript CLI for monitoring and recording multiple TikTok livestreams si
 ```
 src/
   index.ts      – Entry point, SIGINT/SIGTERM wiring
-  cli.ts        – TUI: OpenTUI renderer, Box/Text components, keyInput handler, Input for stop mode
+  cli.ts        – TUI: OpenTUI renderer, Box/Text components, keyInput handler
   manager.ts    – Thin wrapper around tokrec's createRecorder() per user
-  config.ts     – Loads ttlive.json, validates, merges with defaults
+  config.ts     – Loads/saves ttlive.json, validates, merges with defaults
   types.ts      – AppStatus type alias (from tokrec's RecorderState + "error")
-  utils.ts      – (empty, kept for future shared helpers)
+  utils.ts      – sleep() helper
 bin/
-  ttlive        – Shebang wrapper: #!/usr/bin/env bun → imports src/index.ts
+  tokrec-tui    – Shebang wrapper: #!/usr/bin/env bun → imports dist/index.mjs
 ```
 
 **Key dependencies**:
@@ -33,29 +33,48 @@ bin/
 ## Development Workflow
 
 - Run locally: `bun src/index.ts` (requires `ttlive.json` in cwd)
-- TypeScript: `bun build --no-bundle src/index.ts` (quick type-check via transpile)
+- TypeScript check: `bun build --no-bundle src/index.ts`
+- Lint: `bun run lint`
+- Format: `bun run format`
 - No test suite (yet)
 - Bun >= 1.2 required; FFmpeg must be on $PATH at runtime
 
 ## Code Style
 
 - Strict TypeScript, no `any` (except OpenTUI VNode→Renderable casts)
-- Bun-native APIs preferred (`bun build`, `Bun.file`, `spawn`)
+- Bun-native APIs preferred
 - `import type` for type-only imports
 - `ponytail:` comments mark deliberate simplifications (search for them)
 - ESM-only (`"type": "module"`)
+- Biome for lint/format (strict recommended, 2-space indent, 100 line width)
 
 ### OpenTUI Patterns
 
 - `Text()`, `Box()`, `Input()` return VNodes (proxies) — defer work until mounted
 - After `renderer.root.add(vnode)`, extract actual renderables via `getChildren()`
 - Dynamic updates must use actual renderables: `renderable.content = ...`, `renderable.fg = ...`
-- `vnode.on("event", handler)` works (pending calls ARE replayed for event listeners)
+- `vnode.on("event", handler)` works for VNodes (pending calls ARE replayed for event listeners)
+- `renderable.on("event", handler)` works on actual renderables (preferred for reliability)
 - `renderer.destroy()` handles all terminal cleanup
+- `queueMicrotask(() => input.focus())` to delay focus and prevent keystroke bleed
 
 ## Build and Deployment
 
-- `bun run build` — makes `bin/ttlive` executable
+- `bun run build` — tsdown builds `dist/index.mjs`, makes `bin/tokrec-tui` executable
 - `bun run link` — builds + `bun link` (registers globally)
-- `bun link ttlive-manager` — from another project, links this as a dependency
+- `bun link tokrec-tui` — from another project, links this as a dependency
 - No CI/CD pipeline configured
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit (graceful shutdown) |
+| `Ctrl+C` | Same as `q` |
+| `s` | Stop mode — select a user to stop |
+| `r` | Restart mode — select a user to restart |
+| `n` | New download — add a new user at runtime |
+
+## Git Hooks
+
+Lefthook runs `biome check --write` on pre-commit. Run `bun run lint` before committing.
