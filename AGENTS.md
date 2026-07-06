@@ -1,4 +1,4 @@
-# AGENTS.md
+# tokrec-tui
 
 ## Project Overview
 

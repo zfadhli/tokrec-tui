@@ -1,4 +1,4 @@
-# TikTok Livestream Manager
+# tokrec-tui
 
 A Bun-based CLI tool to monitor and record multiple TikTok livestreams using [@zfadhli/tokrec](https://github.com/zfadhli/tokrec).
 

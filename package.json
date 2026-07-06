@@ -1,5 +1,5 @@
 {
-  "name": "ttlive-manager",
+  "name": "tokrec-tui",
   "version": "0.3.1",
   "module": "index.ts",
   "type": "module",
