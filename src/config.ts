@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import JSONC from "tiny-jsonc";
 
 export interface AppConfig {
   outputDir: string;
@@ -16,17 +17,11 @@ const defaults: AppConfig = {
 
 const CONFIG_NAMES = ["tokrec.json", "tokrec.jsonc"] as const;
 
-function stripJsonComments(raw: string): string {
-  // Remove single-line comments (// ...)
-  // Remove multi-line comments (/* ... */)
-  // Avoid matching inside strings
-  return raw.replace(/(?:"(?:\\.|[^"\\])*")|(\/\/.*$|\/\*[\s\S]*?\*\/)/gm, (match, comment) =>
-    comment ? "" : match,
-  );
-}
+// ponytail: module-scope so saveConfig() can default to the loaded path
+export let configPath = "";
 
 export function loadConfig(): AppConfig {
-  let configPath = "";
+  configPath = "";
   for (const name of CONFIG_NAMES) {
     if (existsSync(name)) {
       configPath = name;
@@ -54,7 +49,7 @@ export function loadConfig(): AppConfig {
   const raw = readFileSync(configPath, "utf-8");
   let parsed: Partial<AppConfig>;
   try {
-    parsed = JSON.parse(stripJsonComments(raw));
+    parsed = JSONC.parse(raw);
   } catch {
     console.error(`Invalid JSON in ${configPath}`);
     process.exit(1);
@@ -62,6 +57,6 @@ export function loadConfig(): AppConfig {
   return { ...defaults, ...parsed };
 }
 
-export function saveConfig(config: AppConfig, path = "tokrec.json"): void {
+export function saveConfig(config: AppConfig, path = configPath): void {
   writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
 }
