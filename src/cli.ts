@@ -4,9 +4,10 @@ import type {
   InputRenderable,
   KeyEvent,
   Renderable,
+  ScrollBoxRenderable,
   TextRenderable,
 } from "@opentui/core";
-import { Box, createCliRenderer, Input, Text } from "@opentui/core";
+import { Box, createCliRenderer, Input, ScrollBox, Text, TextAttributes } from "@opentui/core";
 import type { AppConfig } from "./config.ts";
 import { saveConfig } from "./config.ts";
 import type { Manager } from "./manager.ts";
@@ -16,6 +17,7 @@ import { sleep } from "./utils.ts";
 const REFRESH_MS = 2000;
 const SHUTDOWN_TIMEOUT = 5000;
 const STARTUP_DELAY = 5000;
+const MAX_LOG_ENTRIES = 50;
 
 const stateColors: Record<AppStatus, string> = {
   recording: "cyan",
@@ -26,15 +28,38 @@ const stateColors: Record<AppStatus, string> = {
   error: "red",
 };
 
+const stateIcons: Record<AppStatus, string> = {
+  recording: "●",
+  converting: "●",
+  polling: "○",
+  idle: "○",
+  stopped: "○",
+  error: "✗",
+};
+
 export class CLI {
   private renderer: CliRenderer | null = null;
-  private userRenderables = new Map<string, TextRenderable>();
-  private statusContainer: Renderable | null = null;
   private shuttingDown = false;
   private inStopMode = false;
   private inRestartMode = false;
   private inNewMode = false;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Actual renderables (populated after VNodes mount)
+  private statusSummary: TextRenderable | null = null;
+  private sidebarRenderable: Renderable | null = null;
+  private detailRenderable: Renderable | null = null;
+  private logPane: ScrollBoxRenderable | null = null;
+
+  // Sidebar state
+  private selectedIndex = 0;
+  private sidebarTexts: TextRenderable[] = [];
+
+  // Detail pane texts (6 lines)
+  private detailTexts: TextRenderable[] = [];
+
+  // Log pane
+  private logEntries: TextRenderable[] = [];
 
   constructor(
     private manager: Manager,
@@ -47,7 +72,6 @@ export class CLI {
       process.exit(1);
     }
 
-    // Create renderer first — TUI appears immediately
     try {
       this.renderer = await createCliRenderer({
         exitOnCtrlC: false,
@@ -59,78 +83,304 @@ export class CLI {
       process.exit(1);
     }
 
-    // Build component tree — all users show "Idle" until downloads start
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
-    const banner = Text({
-      content: `  tokrec-tui v${pkg.version}`,
-      fg: "cyan",
+
+    // ── Build component tree (VNodes) ──
+
+    // Header bar with status summary
+    const header = Box({
+      flexDirection: "row",
+      justifyContent: "space-between",
+      borderStyle: "double",
+      borderColor: "cyan",
+      title: ` tokrec-tui v${pkg.version} `,
+      paddingX: 1,
     });
-    this.renderer.root.add(banner);
+    header.add(Text({ content: "", flexGrow: 1 })); // status summary (updated in refresh)
+    this.renderer.root.add(header);
 
-    const container = Box({
-      flexDirection: "column",
-      borderStyle: "rounded",
-      title: "User Status",
-      padding: 1,
-      width: 50,
-    });
-
-    for (const user of this.config.users) {
-      container.add(Text({ content: `  ${user.padEnd(24)} Idle` }));
-    }
-
-    container.add(
+    // Keyboard shortcuts guide
+    this.renderer.root.add(
       Text({
-        content: "  [q] quit  [s] stop  [r] restart  [n] new",
+        content: "  [↑/↓/j/k] navigate  [s] stop  [r] restart  [n] new  [q] quit",
         fg: "gray",
       }),
     );
 
-    this.renderer.root.add(container);
+    // Body (sidebar + detail)
+    const body = Box({ flexDirection: "row", flexGrow: 1 });
 
-    // Extract actual renderables from the mounted tree
-    // Index 0 = banner, index 1 = status container
-    this.statusContainer = this.renderer.root.getChildren()[1] ?? null;
-    const children = this.statusContainer?.getChildren() ?? [];
+    // Sidebar
+    body.add(
+      Box({
+        flexDirection: "column",
+        width: "30%",
+        borderStyle: "rounded",
+        borderColor: "cyan",
+        title: " Users ",
+        padding: 1,
+      }),
+    );
+
+    // Detail pane
+    body.add(
+      Box({
+        flexDirection: "column",
+        flexGrow: 1,
+        borderStyle: "rounded",
+        borderColor: "green",
+        title: " Details ",
+        padding: 1,
+      }),
+    );
+
+    this.renderer.root.add(body);
+
+    // Log pane
+    // ponytail: ScrollBox() returns ProxiedVNode; add() accepts VNode at runtime
+    this.renderer.root.add(
+      ScrollBox({
+        stickyScroll: true,
+        stickyStart: "bottom",
+        height: 8,
+        borderStyle: "rounded",
+        borderColor: "gray",
+        title: " Log ",
+        scrollY: true,
+        flexDirection: "column",
+      }) as any,
+    );
+
+    // ── Extract actual renderables from mounted tree ──
+
+    const root = this.renderer.root.getChildren();
+    // root[0] = header box, root[1] = shortcuts guide, root[2] = body, root[3] = logPane
+
+    // Status summary lives inside the header box
+    const headerRenderable = root[0];
+    this.statusSummary = (headerRenderable?.getChildren()[0] ?? null) as TextRenderable | null;
+
+    // Body contains sidebar + detail
+    const bodyRenderable = root[2];
+    const bodyChildren = bodyRenderable?.getChildren() ?? [];
+    this.sidebarRenderable = bodyChildren[0] ?? null;
+    this.detailRenderable = bodyChildren[1] ?? null;
+
+    // Log pane
+    this.logPane = root[3] as ScrollBoxRenderable | null;
+
+    // Populate sidebar with user text placeholders
     for (let i = 0; i < this.config.users.length; i++) {
-      const child = children[i];
-      if (child) this.userRenderables.set(this.config.users[i]!, child as any);
+      this.sidebarRenderable?.add(Text({ content: "" }));
+    }
+    // Extract sidebar TextRenderables
+    const sidebarChildren = this.sidebarRenderable?.getChildren() ?? [];
+    for (let i = 0; i < this.config.users.length; i++) {
+      const child = sidebarChildren[i];
+      if (child) this.sidebarTexts.push(child as TextRenderable);
     }
 
-    // Keyboard handling
+    // Populate detail pane with 4 placeholder lines
+    for (let i = 0; i < 4; i++) {
+      this.detailRenderable?.add(Text({ content: "" }));
+    }
+    // Extract detail TextRenderables
+    const detailChildren = this.detailRenderable?.getChildren() ?? [];
+    for (let i = 0; i < 4; i++) {
+      const child = detailChildren[i];
+      if (child) this.detailTexts.push(child as TextRenderable);
+    }
+
+    // ── Keyboard handling ──
+
     this.renderer.keyInput.on("keypress", (event: KeyEvent) => {
       const inAnyMode = this.inStopMode || this.inRestartMode || this.inNewMode;
+
       if (event.name === "q" || (event.ctrl && event.name === "c")) {
         if (!inAnyMode) {
           this.shutdown().then(() => process.exit(0));
         }
+        return;
       }
-      if (event.name === "s" && !inAnyMode) {
+
+      if (inAnyMode) return;
+
+      if (event.name === "arrowup" || event.name === "k") {
+        this.moveSelection(-1);
+      } else if (event.name === "arrowdown" || event.name === "j") {
+        this.moveSelection(1);
+      } else if (event.name === "s") {
         this.handleStopMode();
-      }
-      if (event.name === "r" && !inAnyMode) {
+      } else if (event.name === "r") {
         this.handleRestartMode();
-      }
-      if (event.name === "n" && !inAnyMode) {
+      } else if (event.name === "n") {
         this.handleNewMode();
       }
     });
 
-    // Start render loop + refresh
+    // ── Start ──
+
     this.renderer.start();
     this.refreshStatus();
     this.refreshTimer = setInterval(() => this.refreshStatus(), REFRESH_MS);
-
-    // Start downloads sequentially in background (non-blocking)
     this.startDownloads();
 
-    // Keep process alive
     await new Promise(() => {});
   }
 
+  // ── Sidebar navigation ──
+
+  private moveSelection(delta: number): void {
+    if (this.sidebarTexts.length === 0) return;
+    this.selectedIndex = Math.max(
+      0,
+      Math.min(this.sidebarTexts.length - 1, this.selectedIndex + delta),
+    );
+    this.renderSidebar();
+    this.updateDetail();
+  }
+
+  // ── Status summary ──
+
+  private buildStatusSummary(): string {
+    const statuses = this.manager.getStatuses();
+    let recording = 0;
+    let idle = 0;
+    let errors = 0;
+
+    for (const [, state] of statuses) {
+      if (state === "recording" || state === "converting") recording++;
+      else if (state === "error") errors++;
+      else idle++;
+    }
+
+    const tracked = statuses.size;
+    if (tracked < this.config.users.length) {
+      idle += this.config.users.length - tracked;
+    }
+
+    return `● ${recording} recording  ○ ${idle} idle  ✗ ${errors} errors`;
+  }
+
+  // ── Refresh all panes ──
+
+  private refreshStatus(): void {
+    if (!this.statusSummary) return;
+
+    const statuses = this.manager.getStatuses();
+    this.statusSummary.content = this.buildStatusSummary();
+    this.renderSidebar(statuses);
+    this.updateDetail();
+  }
+
+  // ── Sidebar rendering ──
+
+  private renderSidebar(statuses?: Map<string, AppStatus>): void {
+    statuses ??= this.manager.getStatuses();
+
+    for (let i = 0; i < this.config.users.length; i++) {
+      const user = this.config.users[i];
+      const text = this.sidebarTexts[i];
+      if (!user || !text) continue;
+
+      const state = statuses.get(user) ?? "idle";
+      const lastError = this.manager.getLastError(user);
+      const isSelected = i === this.selectedIndex;
+
+      const icon = lastError ? "✗" : (stateIcons[state] ?? "○");
+      const color = lastError ? "red" : (stateColors[state] ?? "gray");
+
+      const indicator = isSelected ? ">>" : "  ";
+      const recIcon = state === "recording" ? " ●" : "";
+      text.content = `${indicator} ${icon} ${user}${recIcon}`;
+      text.fg = isSelected ? "cyan" : color;
+      text.attributes = isSelected ? TextAttributes.BOLD : TextAttributes.NONE;
+    }
+  }
+
+  // ── Detail pane ──
+
+  private setDetailLine(
+    i: number,
+    content: string,
+    fg: string,
+    attributes = TextAttributes.NONE,
+  ): void {
+    const line = this.detailTexts[i];
+    if (!line) return;
+    line.content = content;
+    line.fg = fg;
+    line.attributes = attributes;
+  }
+
+  private updateDetail(): void {
+    const user = this.config.users[this.selectedIndex];
+    if (!user || this.detailTexts.length < 4) return;
+
+    const statuses = this.manager.getStatuses();
+    const state = statuses.get(user) ?? "idle";
+    const lastError = this.manager.getLastError(user);
+
+    // Line 0: User — Status
+    const statusColor = lastError ? "red" : (stateColors[state] ?? "gray");
+    const statusLabel = lastError ? "Error" : state.charAt(0).toUpperCase() + state.slice(1);
+    this.setDetailLine(0, `${user} — ${statusLabel}`, statusColor, TextAttributes.BOLD);
+
+    // Line 1: Duration
+    if (state === "recording" || state === "converting") {
+      const start = this.manager.getRecordingStart(user);
+      const sec = start ? Math.floor((Date.now() - start) / 1000) : 0;
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      const timer =
+        h > 0
+          ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+          : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      this.setDetailLine(1, `Duration: ${timer}`, "white");
+    } else {
+      this.setDetailLine(1, "Duration: —", "gray");
+    }
+
+    // Line 2: Status detail
+    const detailMsg = lastError ? `Error: ${lastError.slice(0, 40)}` : `Status: ${statusLabel}`;
+    this.setDetailLine(2, detailMsg, lastError ? "red" : "white");
+
+    // Line 3: File path
+    const currentFile = this.manager.getProgress(user)?.file;
+    this.setDetailLine(
+      3,
+      currentFile ? `File: ${currentFile}` : "File: —",
+      currentFile ? "white" : "gray",
+    );
+  }
+
+  // ── Log pane ──
+
+  private addLogEntry(user: string, message: string): void {
+    if (!this.logPane) return;
+
+    const now = new Date();
+    const timestamp = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+
+    const entry = Text({ content: `[${timestamp}] ${user}: ${message}`, fg: "white" });
+    // ponytail: add()/remove() accept VNode at runtime but types require Renderable
+    this.logPane.add(entry as any);
+    this.logEntries.push(entry as any);
+
+    if (this.logEntries.length > MAX_LOG_ENTRIES) {
+      const old = this.logEntries.shift();
+      if (old) this.logPane.remove(old as any);
+    }
+  }
+
+  // ── Start downloads ──
+
   private async startDownloads(): Promise<void> {
     for (let i = 0; i < this.config.users.length; i++) {
-      const user = this.config.users[i]!;
+      const user = this.config.users[i];
+      if (!user) continue;
+      this.addLogEntry(user, "Starting...");
       this.manager.startUser(user, {
         outputDir: this.config.outputDir,
         interval: this.config.interval,
@@ -144,100 +394,90 @@ export class CLI {
     }
   }
 
-  private refreshStatus(): void {
-    const statuses = this.manager.getStatuses();
-    for (const [user, renderable] of this.userRenderables) {
-      const state = statuses.get(user) ?? "idle";
-      const lastError = this.manager.getLastError(user);
-      const color = lastError ? "red" : (stateColors[state] ?? "gray");
+  // ── Mode overlays ──
 
-      let label: string;
-      if (lastError) {
-        label = `error: ${lastError.slice(0, 24)}`;
-      } else if (state === "recording") {
-        const start = this.manager.getRecordingStart(user);
-        const sec = start ? Math.floor((Date.now() - start) / 1000) : 0;
-        const h = Math.floor(sec / 3600);
-        const m = Math.floor((sec % 3600) / 60);
-        const s = sec % 60;
-        const timer =
-          h > 0
-            ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-            : `${m}:${String(s).padStart(2, "0")}`;
-        label = `recording  ${timer}`;
-      } else {
-        label = state;
-      }
+  private showOverlay(title: string, buildContent: (box: Renderable) => void): void {
+    if (!this.renderer) return;
 
-      renderable.content = `  ${user.padEnd(24)} ${label}`;
-      renderable.fg = color;
+    const overlayBox = Box({
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      zIndex: 10,
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+    });
+
+    this.renderer.root.add(overlayBox);
+
+    // Extract actual renderable
+    const overlayRenderable = this.renderer.root.getChildren().at(-1);
+    if (!overlayRenderable) return;
+
+    const innerBox = Box({
+      flexDirection: "column",
+      borderStyle: "rounded",
+      borderColor: "yellow",
+      title: ` ${title} `,
+      padding: 1,
+      width: 50,
+      backgroundColor: "black",
+    });
+    overlayRenderable.add(innerBox);
+
+    // Extract inner renderable and pass to builder
+    const innerRenderable = overlayRenderable.getChildren().at(-1);
+    if (innerRenderable) {
+      buildContent(innerRenderable);
     }
+  }
+
+  private removeOverlay(): void {
+    if (!this.renderer) return;
+    const children = this.renderer.root.getChildren();
+    const overlay = children.at(-1);
+    if (overlay) this.renderer.root.remove(overlay);
   }
 
   private handleStopMode(): void {
     if (!this.renderer || this.inStopMode) return;
     this.inStopMode = true;
 
-    // Hide status container
-    this.statusContainer!.visible = false;
-
-    // Build stop mode UI with VNodes
-    const stopBox = Box({
-      flexDirection: "column",
-      borderStyle: "rounded",
-      title: "Stop Mode",
-      padding: 1,
-      width: 50,
-    });
-
     const users = this.manager.getActiveUsers();
-    if (users.length === 0) {
-      stopBox.add(Text({ content: "  No active users." }));
-      stopBox.add(Text({ content: "  Press Enter to return..." }));
-      stopBox.add(Input({ placeholder: "" }));
-      this.renderer.root.add(stopBox);
+    this.showOverlay("Stop Mode", (box) => {
+      if (users.length === 0) {
+        box.add(Text({ content: "  No active users." }));
+        box.add(Text({ content: "  Press Enter to return..." }));
+        box.add(Input({ placeholder: "" }));
+        this.focusInput(box, () => {
+          this.removeOverlay();
+          this.inStopMode = false;
+        });
+        return;
+      }
 
-      const stopRenderable = this.renderer.root.getChildren().at(-1);
-      if (!stopRenderable) return;
-      const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
-      inputRenderable.value = "";
-      // Delay focus by one tick so the triggering keystroke ("s") is consumed first
-      queueMicrotask(() => inputRenderable.focus());
-      inputRenderable.on("enter", () => {
-        this.renderer?.root.remove(stopRenderable as any);
-        this.statusContainer!.visible = true;
+      users.forEach((u, i) => {
+        box.add(Text({ content: `  ${i + 1}. ${u}` }));
+      });
+      box.add(Text({ content: "" }));
+      box.add(Text({ content: "  Enter number or username (blank to cancel):" }));
+      box.add(Input({ placeholder: "" }));
+      this.focusInput(box, (value) => {
+        if (value) {
+          const idx = Number.parseInt(value, 10);
+          const target =
+            !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
+          if (target && users.includes(target)) {
+            this.addLogEntry(target, "Stopping...");
+            this.manager.stopUser(target).catch(() => {});
+          }
+        }
+        this.removeOverlay();
         this.inStopMode = false;
       });
-      return;
-    }
-
-    users.forEach((u, i) => {
-      stopBox.add(Text({ content: `  ${i + 1}. ${u}` }));
-    });
-    stopBox.add(Text({ content: "" }));
-    stopBox.add(Text({ content: "  Enter number or username (blank to cancel):" }));
-    stopBox.add(Input({ placeholder: "" }));
-    this.renderer.root.add(stopBox);
-
-    const stopRenderable = this.renderer.root.getChildren().at(-1);
-    if (!stopRenderable) return;
-    const inputRenderable = stopRenderable.getChildren().at(-1) as InputRenderable;
-    inputRenderable.value = "";
-    // Delay focus by one tick so the triggering keystroke ("s") is consumed first
-    queueMicrotask(() => inputRenderable.focus());
-    inputRenderable.on("enter", () => {
-      const value = inputRenderable.value.trim();
-      if (value) {
-        const idx = Number.parseInt(value, 10);
-        const target =
-          !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
-        if (target && users.includes(target)) {
-          this.manager.stopUser(target).catch(() => {});
-        }
-      }
-      this.renderer?.root.remove(stopRenderable as any);
-      this.statusContainer!.visible = true;
-      this.inStopMode = false;
     });
   }
 
@@ -245,70 +485,44 @@ export class CLI {
     if (!this.renderer || this.inRestartMode) return;
     this.inRestartMode = true;
 
-    // Hide status container
-    this.statusContainer!.visible = false;
-
-    // Build restart mode UI
-    const restartBox = Box({
-      flexDirection: "column",
-      borderStyle: "rounded",
-      title: "Restart Mode",
-      padding: 1,
-      width: 50,
-    });
-
     const users = this.config.users;
-    if (users.length === 0) {
-      restartBox.add(Text({ content: "  No configured users." }));
-      restartBox.add(Text({ content: "  Press Enter to return..." }));
-      restartBox.add(Input({ placeholder: "" }));
-      this.renderer.root.add(restartBox);
+    this.showOverlay("Restart Mode", (box) => {
+      if (users.length === 0) {
+        box.add(Text({ content: "  No configured users." }));
+        box.add(Text({ content: "  Press Enter to return..." }));
+        box.add(Input({ placeholder: "" }));
+        this.focusInput(box, () => {
+          this.removeOverlay();
+          this.inRestartMode = false;
+        });
+        return;
+      }
 
-      const restartRenderable = this.renderer.root.getChildren().at(-1);
-      if (!restartRenderable) return;
-      const inputRenderable = restartRenderable.getChildren().at(-1) as InputRenderable;
-      inputRenderable.value = "";
-      queueMicrotask(() => inputRenderable.focus());
-      inputRenderable.on("enter", () => {
-        this.renderer?.root.remove(restartRenderable as any);
-        this.statusContainer!.visible = true;
+      users.forEach((u, i) => {
+        box.add(Text({ content: `  ${i + 1}. ${u}` }));
+      });
+      box.add(Text({ content: "" }));
+      box.add(Text({ content: "  Enter number or username (blank to cancel):" }));
+      box.add(Input({ placeholder: "" }));
+      this.focusInput(box, (value) => {
+        if (value) {
+          const idx = Number.parseInt(value, 10);
+          const target =
+            !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
+          if (target && users.includes(target)) {
+            this.addLogEntry(target, "Restarting...");
+            this.manager.restartUser(target, {
+              outputDir: this.config.outputDir,
+              interval: this.config.interval,
+              logConsole: false,
+              ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
+              ...(this.config.duration ? { duration: this.config.duration } : {}),
+            });
+          }
+        }
+        this.removeOverlay();
         this.inRestartMode = false;
       });
-      return;
-    }
-
-    users.forEach((u, i) => {
-      restartBox.add(Text({ content: `  ${i + 1}. ${u}` }));
-    });
-    restartBox.add(Text({ content: "" }));
-    restartBox.add(Text({ content: "  Enter number or username (blank to cancel):" }));
-    restartBox.add(Input({ placeholder: "" }));
-    this.renderer.root.add(restartBox);
-
-    const restartRenderable = this.renderer.root.getChildren().at(-1);
-    if (!restartRenderable) return;
-    const inputRenderable = restartRenderable.getChildren().at(-1) as InputRenderable;
-    inputRenderable.value = "";
-    queueMicrotask(() => inputRenderable.focus());
-    inputRenderable.on("enter", () => {
-      const value = inputRenderable.value.trim();
-      if (value) {
-        const idx = Number.parseInt(value, 10);
-        const target =
-          !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
-        if (target && users.includes(target)) {
-          this.manager.restartUser(target, {
-            outputDir: this.config.outputDir,
-            interval: this.config.interval,
-            logConsole: false,
-            ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
-            ...(this.config.duration ? { duration: this.config.duration } : {}),
-          });
-        }
-      }
-      this.renderer?.root.remove(restartRenderable as any);
-      this.statusContainer!.visible = true;
-      this.inRestartMode = false;
     });
   }
 
@@ -316,55 +530,49 @@ export class CLI {
     if (!this.renderer || this.inNewMode) return;
     this.inNewMode = true;
 
-    // Hide status container
-    this.statusContainer!.visible = false;
-
-    // Build new mode UI
-    const newBox = Box({
-      flexDirection: "column",
-      borderStyle: "rounded",
-      title: "New Download",
-      padding: 1,
-      width: 50,
-    });
-
-    newBox.add(Text({ content: "  Enter TikTok username to monitor:" }));
-    newBox.add(Input({ placeholder: "" }));
-    this.renderer.root.add(newBox);
-
-    const newRenderable = this.renderer.root.getChildren().at(-1);
-    if (!newRenderable) return;
-    const inputRenderable = newRenderable.getChildren().at(-1) as InputRenderable;
-    inputRenderable.value = "";
-    queueMicrotask(() => inputRenderable.focus());
-    inputRenderable.on("enter", () => {
-      const value = inputRenderable.value.trim();
-      if (value) {
-        this.addNewUser(value);
-      }
-      this.renderer?.root.remove(newRenderable as any);
-      this.statusContainer!.visible = true;
-      this.inNewMode = false;
+    this.showOverlay("New Download", (box) => {
+      box.add(Text({ content: "  Enter TikTok username to monitor:" }));
+      box.add(Input({ placeholder: "" }));
+      this.focusInput(box, (value) => {
+        if (value) {
+          this.addNewUser(value);
+        }
+        this.removeOverlay();
+        this.inNewMode = false;
+      });
     });
   }
 
+  // ── Input helper ──
+
+  private focusInput(box: Renderable, onEnter: (value: string) => void): void {
+    const children = box.getChildren();
+    const inputRenderable = children.at(-1) as InputRenderable;
+    if (!inputRenderable) return;
+    inputRenderable.value = "";
+    queueMicrotask(() => inputRenderable.focus());
+    inputRenderable.on("enter", () => {
+      onEnter(inputRenderable.value.trim());
+    });
+  }
+
+  // ── Add new user ──
+
   private addNewUser(user: string): void {
-    if (!this.statusContainer) return;
+    if (!this.sidebarRenderable) return;
 
-    // Add text renderable for new user (insert before footer)
-    const children = this.statusContainer.getChildren();
-    const footerIndex = children.length - 1; // footer is last child
-    const newText = Text({ content: `  ${user.padEnd(24)} Idle` });
-    this.statusContainer.add(newText, footerIndex);
-
-    // Extract the actual renderable and add to map
-    const updatedChildren = this.statusContainer.getChildren();
-    const renderable = updatedChildren[footerIndex] as TextRenderable;
+    // Add text to sidebar
+    this.sidebarRenderable.add(Text({ content: "" }));
+    const updatedChildren = this.sidebarRenderable.getChildren();
+    const renderable = updatedChildren.at(-1) as TextRenderable;
     if (renderable) {
-      this.userRenderables.set(user, renderable);
+      this.sidebarTexts.push(renderable);
     }
 
-    // Start the recorder
+    this.config.users.push(user);
+    saveConfig(this.config);
+
+    this.addLogEntry(user, "Starting (new)...");
     this.manager.startUser(user, {
       outputDir: this.config.outputDir,
       interval: this.config.interval,
@@ -373,10 +581,10 @@ export class CLI {
       ...(this.config.duration ? { duration: this.config.duration } : {}),
     });
 
-    // Save updated config
-    this.config.users.push(user);
-    saveConfig(this.config);
+    this.refreshStatus();
   }
+
+  // ── Shutdown ──
 
   async shutdown(): Promise<void> {
     if (this.shuttingDown) return;

@@ -2,13 +2,13 @@
 
 ## Goal
 
-Rebuild and maintain tokrec-tui — a Bun/TypeScript CLI for monitoring and recording TikTok livestreams via tokrec + OpenTUI.
+Maintain tokrec-tui — Bun/TypeScript CLI for monitoring/recording TikTok livestreams via tokrec + OpenTUI.
 
 ## Session Info
 
 - **Branch:** `main`
-- **Project:** tokrec-tui (v0.4.0)
-- **Saved:** 2025-07-06 14:00
+- **Project:** tokrec-tui (v0.5.0)
+- **Saved:** 2025-07-06 16:00
 
 ## Changes
 
@@ -17,50 +17,33 @@ Working tree clean. No uncommitted changes.
 ## Commits This Session
 
 ```
-1607a6e release: v0.4.0 (#6)
-bf86832 fix status update: correct container index after banner addition
-08ea9c0 show version in TUI banner
-f00799f add banner to TUI
-11add85 rename config from ttlive.json to tokrec.json, add .jsonc support
-55a2c36 update status colors: recording=cyan, polling=white
-519c832 update README.md for tokrec-tui
-5127033 update AGENTS.md for tokrec-tui
-bfae2b6 rename binary to tokrec-tui
-3be36b0 rename package to tokrec-tui
+216b04d Release v0.5.0 (#7)
+7323c98 deps: upgrade @zfadhli/tokrec 0.12.2 → 0.13.0
+cfd27a7 feat: surface network errors in TUI and clean up dead controllers
+6ebc673 feat: show elapsed recording timer in TUI
+b5a6567 release: v0.5.0
 ```
 
 ## Files Touched
 
 | File | Status | Done | Left |
 |------|--------|------|------|
-| `src/cli.ts` | modified | TUI: banner, version, stop/restart/new modes, OpenTUI, status colors | None |
-| `src/config.ts` | modified | Rename to tokrec.json + .jsonc support, saveConfig() | None |
-| `src/manager.ts` | modified | Thin tokrec wrapper, restartUser() | None |
-| `src/types.ts` | modified | AppStatus = RecorderState \| "error" | None |
-| `src/utils.ts` | modified | sleep() helper only | None |
-| `src/terminal.ts` | deleted | Replaced by OpenTUI in cli.ts | None |
-| `bin/tokrec-tui` | new | Shebang wrapper for bundled dist/index.mjs | None |
-| `biome.json` | new | Lint/format config (strict, 2-space indent) | None |
-| `lefthook.yml` | new | Pre-commit hook with biome check | None |
-| `tsdown.config.ts` | new | Build config (ESM, deps.neverBundle) | None |
-| `CHANGELOG.md` | new | Keep a Changelog format, v0.1.0-v0.4.0 | None |
-| `AGENTS.md` | updated | Project overview, architecture, keyboard shortcuts | None |
-| `README.md` | updated | Full docs with badges, install, usage, config | None |
-| `package.json` | updated | v0.4.0, tokrec-tui, deps, scripts | None |
+| `src/manager.ts` | modified | Error event tracking, recording timer, start() rejection handling, getLastError(), getRecordingStart() | None |
+| `src/cli.ts` | modified | Error display in status, recording timer (MM:SS/HH:MM:SS) | None |
+| `package.json` | modified | tokrec 0.12.2→0.13.0, version 0.5.0 | None |
+| `CHANGELOG.md` | modified | v0.5.0 section with Added/Changed | None |
 
 ## Key Decisions
 
-- **OpenTUI over raw ANSI**: User explicitly requested despite weight concerns. VNode pattern requires extracting actual renderables for dynamic updates.
-- **tsdown build**: User requested despite private CLI nature. Externalizes native deps (@opentui/core, @zfadhli/tokrec).
-- **tokrec.json + .jsonc**: Rename from ttlive.json to match package name. Added JSONC support for comments.
-- **InStopMode guard**: Prevents re-entry and blocks global keypress during stop/restart/new modes.
-- **queueMicrotask for focus**: Delays Input focus by one tick to prevent triggering keystroke from bleeding into the field.
+- **No auto-restart for transient errors**: Tokrec handles transient errors internally (FFmpeg reconnect, URL refresh, polling loop continues). Controller never transitions to "stopped" from an error. Only surface errors in TUI.
+- **Track recording start time manually**: `RecorderStatus.sessionDuration` is set only after recording ends (static). For live timer, track `Date.now()` on `recording:start` event.
+- **Timer only during "recording" state**: Not during "converting" — converting is post-recording overhead, timer would be misleading.
+- **Merge recording:start into existing handler**: Avoided second event subscription by adding timestamp set to existing error-clearing handler.
 
 ## Dead Ends
 
-- **inputVNode.on("enter", ...)**: Never fires after VNode is mounted — pending calls only replay during mounting, not after.
-- **onSubmit on Input**: InputRenderable.submit() doesn't call onSubmit — it only emits "enter" event. Must use renderable.on("enter", ...) on actual instance.
-- **tsdown --compile**: Fails because wreq-js native bindings can't be bundled. Used --target bun instead with external deps.
+- **Auto-restart on transient errors**: Original plan included auto-restart logic with restart caps. @oracle review revealed tokrec already handles transient errors internally — the controller never dies from network failures.
+- **EventEmitter on Manager**: Original plan included event emitter for error/restart notifications. Deleted — 2s polling already captures everything, EventEmitter adds indirection for zero benefit.
 
 ## Blockers
 
@@ -70,8 +53,7 @@ None.
 
 - [ ] Test full workflow with real TikTok cookies
 - [ ] Consider adding pause/resume per-user
-- [ ] Consider multi-select in stop/restart modes (ponytail comment exists)
-- [ ] Add error recovery for network failures
+- [ ] Consider multi-select in stop/restart modes
 
 ## Suggested Skills
 
