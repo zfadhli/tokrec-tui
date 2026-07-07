@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-07-07
+
+### Added
+- Dashboard TUI layout: header bar with status summary, sidebar with user list, detail pane, scrollable log pane
+- Keyboard shortcuts guide displayed below header
+- Arrow/j/k navigation in sidebar with `>>` indicator
+- Live filename display in detail pane (generated at recording start)
+- Filename logged when recording ends or is stopped
+- Download progress tracking in Manager (speed, bytes, file, size)
+- JSONC config support via `tiny-jsonc`
+
+### Changed
+- Selected user indicator: `>>` in cyan, no bold/yellow highlight
+- Config save: writes to loaded file (`tokrec.jsonc` or `tokrec.json`) instead of hardcoded `tokrec.json`
+- Mode overlays: transparent background with black dialog box
+
+### Fixed
+- Arrow key navigation: use OpenTUI key names (`up`/`down` not `arrowup`/`arrowdown`)
+- Config save path: now updates the correct config file when adding users
+
 ## [0.5.0] - 2025-07-06
 
 ### Added

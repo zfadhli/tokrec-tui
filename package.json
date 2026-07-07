@@ -1,6 +1,6 @@
 {
   "name": "tokrec-tui",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "module": "index.ts",
   "type": "module",
   "private": true,
@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@opentui/core": "^0.4.3",
-    "@zfadhli/tokrec": "^0.13.0"
+    "@zfadhli/tokrec": "^0.13.0",
+    "tiny-jsonc": "^1.0.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
