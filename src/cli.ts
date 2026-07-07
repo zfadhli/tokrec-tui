@@ -61,6 +61,9 @@ export class CLI {
   // Log pane
   private logEntries: TextRenderable[] = [];
 
+  // Track previous states for transition logging
+  private prevStates = new Map<string, AppStatus>();
+
   constructor(
     private manager: Manager,
     private config: AppConfig,
@@ -205,9 +208,9 @@ export class CLI {
 
       if (inAnyMode) return;
 
-      if (event.name === "arrowup" || event.name === "k") {
+      if (event.name === "up" || event.name === "k") {
         this.moveSelection(-1);
-      } else if (event.name === "arrowdown" || event.name === "j") {
+      } else if (event.name === "down" || event.name === "j") {
         this.moveSelection(1);
       } else if (event.name === "s") {
         this.handleStopMode();
@@ -268,6 +271,20 @@ export class CLI {
     if (!this.statusSummary) return;
 
     const statuses = this.manager.getStatuses();
+
+    // Log filename when recording ends (state transition away from "recording")
+    for (const [user, state] of statuses) {
+      const prev = this.prevStates.get(user);
+      if (prev === "recording" && state !== "recording") {
+        const file = this.manager.getProgress(user)?.file;
+        if (file) this.addLogEntry(user, `Saved: ${file}`);
+      }
+    }
+    // Update previous states
+    for (const [user, state] of statuses) {
+      this.prevStates.set(user, state);
+    }
+
     this.statusSummary.content = this.buildStatusSummary();
     this.renderSidebar(statuses);
     this.updateDetail();
@@ -293,7 +310,7 @@ export class CLI {
       const indicator = isSelected ? ">>" : "  ";
       const recIcon = state === "recording" ? " ●" : "";
       text.content = `${indicator} ${icon} ${user}${recIcon}`;
-      text.fg = isSelected ? "cyan" : color;
+      text.fg = isSelected ? "yellow" : color;
       text.attributes = isSelected ? TextAttributes.BOLD : TextAttributes.NONE;
     }
   }
@@ -471,7 +488,9 @@ export class CLI {
           const target =
             !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
           if (target && users.includes(target)) {
+            const file = this.manager.getProgress(target)?.file;
             this.addLogEntry(target, "Stopping...");
+            if (file) this.addLogEntry(target, `Saved: ${file}`);
             this.manager.stopUser(target).catch(() => {});
           }
         }
