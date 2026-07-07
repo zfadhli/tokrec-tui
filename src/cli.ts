@@ -7,7 +7,16 @@ import type {
   ScrollBoxRenderable,
   TextRenderable,
 } from "@opentui/core";
-import { Box, createCliRenderer, Input, ScrollBox, Text, TextAttributes } from "@opentui/core";
+import {
+  Box,
+  createCliRenderer,
+  cyan,
+  Input,
+  ScrollBox,
+  Text,
+  TextAttributes,
+  t,
+} from "@opentui/core";
 import type { AppConfig } from "./config.ts";
 import { saveConfig } from "./config.ts";
 import type { Manager } from "./manager.ts";
@@ -307,11 +316,10 @@ export class CLI {
       const icon = lastError ? "✗" : (stateIcons[state] ?? "○");
       const color = lastError ? "red" : (stateColors[state] ?? "gray");
 
-      const indicator = isSelected ? ">>" : "  ";
       const recIcon = state === "recording" ? " ●" : "";
-      text.content = `${indicator} ${icon} ${user}${recIcon}`;
-      text.fg = isSelected ? "yellow" : color;
-      text.attributes = isSelected ? TextAttributes.BOLD : TextAttributes.NONE;
+      text.content = isSelected ? `>> ${icon} ${user}${recIcon}` : `  ${icon} ${user}${recIcon}`;
+      text.fg = color;
+      text.attributes = TextAttributes.NONE;
     }
   }
 
