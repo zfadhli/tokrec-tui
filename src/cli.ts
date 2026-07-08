@@ -68,7 +68,7 @@ export class CLI {
   private detailTexts: TextRenderable[] = [];
 
   // Log pane
-  private logEntries: TextRenderable[] = [];
+  private logEntries: Renderable[] = [];
 
   // Track previous states for transition logging
   private prevStates = new Map<string, AppStatus>();
@@ -389,13 +389,14 @@ export class CLI {
     const timestamp = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
 
     const entry = Text({ content: `[${timestamp}] ${user}: ${message}`, fg: "white" });
-    // ponytail: add()/remove() accept VNode at runtime but types require Renderable
     this.logPane.add(entry as any);
-    this.logEntries.push(entry as any);
+    // ponytail: add() instantiates VNode into real Renderable; store that, not the proxy
+    const renderable = this.logPane.getChildren().at(-1);
+    if (renderable) this.logEntries.push(renderable);
 
     if (this.logEntries.length > MAX_LOG_ENTRIES) {
       const old = this.logEntries.shift();
-      if (old) this.logPane.remove(old as any);
+      if (old) this.logPane.remove(old);
     }
   }
 
