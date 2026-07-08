@@ -1,7 +1,7 @@
 # Project State
 
 **Core value:** Monitoring
-**Current focus:** Fixed "cannot render child" crash — loop complete
+**Current focus:** Added scrollable sidebar for many users — loop complete
 
 ## Loop Position
 
@@ -10,6 +10,6 @@ PLAN ──▶ APPLY ──▶ WRAP
 
 ## Session Continuity
 
-Last plan: 01-fix-render-child/01-01-PLAN.md
-Result: PASS — crash fixed, build clean
+Last plan: 02-scrollable-sidebar/02-01-PLAN.md
+Result: PASS — sidebar ScrollBox, scroll-into-view, addNewUser fix
 Next action: /rail-plan or /rail-pause

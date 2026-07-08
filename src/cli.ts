@@ -122,16 +122,18 @@ export class CLI {
     // Body (sidebar + detail)
     const body = Box({ flexDirection: "row", flexGrow: 1 });
 
-    // Sidebar
+    // Sidebar — ScrollBox for many users
+    // ponytail: ScrollBox() returns ProxiedVNode; add() accepts VNode at runtime
     body.add(
-      Box({
+      ScrollBox({
+        scrollY: true,
         flexDirection: "column",
         width: "30%",
         borderStyle: "rounded",
         borderColor: "cyan",
         title: " Users ",
         padding: 1,
-      }),
+      }) as any,
     );
 
     // Detail pane
@@ -182,13 +184,15 @@ export class CLI {
     this.logPane = root[3] as ScrollBoxRenderable | null;
 
     // Populate sidebar with user text placeholders
+    // ponytail: ScrollBox wraps content in wrapper > viewport > content
     for (let i = 0; i < this.config.users.length; i++) {
       this.sidebarRenderable?.add(Text({ content: "" }));
     }
-    // Extract sidebar TextRenderables
-    const sidebarChildren = this.sidebarRenderable?.getChildren() ?? [];
+    // Extract sidebar TextRenderables from ScrollBox content
+    const sidebarContent =
+      this.sidebarRenderable?.getChildren()?.[0]?.getChildren()?.[0]?.getChildren() ?? [];
     for (let i = 0; i < this.config.users.length; i++) {
-      const child = sidebarChildren[i];
+      const child = sidebarContent[i];
       if (child) this.sidebarTexts.push(child as TextRenderable);
     }
 
@@ -250,6 +254,22 @@ export class CLI {
     );
     this.renderSidebar();
     this.updateDetail();
+    this.scrollSidebarToSelected();
+  }
+
+  private scrollSidebarToSelected(): void {
+    if (!this.sidebarRenderable) return;
+    // ponytail: cast to ScrollBoxRenderable for scrollTop access
+    const scrollBox = this.sidebarRenderable as ScrollBoxRenderable;
+    // ScrollBox content is wrapper > viewport > content; viewport height is visible area
+    const viewport = scrollBox.getChildren()?.[0]?.getChildren()?.[0];
+    if (!viewport) return;
+    const viewportHeight = viewport.height ?? 0;
+    if (viewportHeight <= 0) return;
+    // Each item is 1 line; scroll so selected is visible
+    const maxScroll = Math.max(0, this.sidebarTexts.length - viewportHeight);
+    const targetScroll = Math.max(0, Math.min(maxScroll, this.selectedIndex));
+    scrollBox.scrollTop = targetScroll;
   }
 
   // ── Status summary ──
@@ -589,10 +609,12 @@ export class CLI {
   private addNewUser(user: string): void {
     if (!this.sidebarRenderable) return;
 
-    // Add text to sidebar
+    // Add text to sidebar ScrollBox
     this.sidebarRenderable.add(Text({ content: "" }));
-    const updatedChildren = this.sidebarRenderable.getChildren();
-    const renderable = updatedChildren.at(-1) as TextRenderable;
+    // ponytail: ScrollBox content is wrapper > viewport > content
+    const sidebarContent =
+      this.sidebarRenderable.getChildren()?.[0]?.getChildren()?.[0]?.getChildren() ?? [];
+    const renderable = sidebarContent.at(-1) as TextRenderable;
     if (renderable) {
       this.sidebarTexts.push(renderable);
     }
