@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-07-09
+
+### Fixed
+- Sidebar scroll: use `scrollChildIntoView` instead of manual viewport traversal
+- Sidebar and log pane height: add `height: "100%"` to expand vertically
+- Removed unused imports (`cyan`, `t`)
+- Fix old `ttlive.json` reference in error message
+- Add `"types": ["bun"]` to tsconfig for editor type resolution
+
 ## [0.7.0] - 2026-07-09
 
 ### Added
