@@ -1,4 +1,4 @@
-# tokrec-tui
+# AGENTS.md
 
 ## Project Overview
 
@@ -22,7 +22,7 @@ bin/
 - `@zfadhli/tokrec` — handles TikTok scraping, polling, FFmpeg spawning, and stream conversion. Our code creates one `RecorderController` per user via `createRecorder()`.
 - `@opentui/core` — native Zig TUI renderer with Box/Text/Input components, keyInput events, and flexbox layout.
 
-**Config**: JSON file (`tokrec.json`) in the working directory. Fields: `outputDir`, `interval`, `users[]`, `cookiesPath`, `duration`.
+**Config**: JSON file (`tokrec.json` or `tokrec.jsonc`) in the working directory. Fields: `outputDir`, `interval`, `users[]`, `cookiesPath`, `duration`.
 
 ## Setup Commands
 
@@ -73,6 +73,7 @@ bin/
 | `Ctrl+C` | Same as `q` |
 | `s` | Stop mode — select a user to stop |
 | `r` | Restart mode — select a user to restart |
+| `d` | Delete user from config and sidebar |
 | `n` | New download — add a new user at runtime |
 
 ## Git Hooks

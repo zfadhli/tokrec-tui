@@ -78,7 +78,7 @@ export class CLI {
 
   async start(): Promise<void> {
     if (this.config.users.length === 0) {
-      console.error("❌ No users in config — add users to ttlive.json");
+      console.error("❌ No users in config — add users to tokrec.json");
       process.exit(1);
     }
 
@@ -126,6 +126,7 @@ export class CLI {
       ScrollBox({
         scrollY: true,
         flexDirection: "column",
+        height: "100%",
         width: "30%",
         borderStyle: "rounded",
         borderColor: "cyan",
@@ -257,17 +258,11 @@ export class CLI {
 
   private scrollSidebarToSelected(): void {
     if (!this.sidebarRenderable) return;
-    // ponytail: cast to ScrollBoxRenderable for scrollTop access
     const scrollBox = this.sidebarRenderable as ScrollBoxRenderable;
-    // ScrollBox content is wrapper > viewport > content; viewport height is visible area
-    const viewport = scrollBox.getChildren()?.[0]?.getChildren()?.[0];
-    if (!viewport) return;
-    const viewportHeight = viewport.height ?? 0;
-    if (viewportHeight <= 0) return;
-    // Each item is 1 line; scroll so selected is visible
-    const maxScroll = Math.max(0, this.sidebarTexts.length - viewportHeight);
-    const targetScroll = Math.max(0, Math.min(maxScroll, this.selectedIndex));
-    scrollBox.scrollTop = targetScroll;
+    const selectedText = this.sidebarTexts[this.selectedIndex];
+    if (selectedText) {
+      scrollBox.scrollChildIntoView(selectedText.id);
+    }
   }
 
   // ── Status summary ──
