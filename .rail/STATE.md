@@ -1,7 +1,7 @@
 # Project State
 
 **Core value:** Monitoring
-**Current focus:** Added scrollable sidebar for many users — loop complete
+**Current focus:** Stop/restart in detail pane, inNewMode guard fix — loop complete
 
 ## Loop Position
 
@@ -10,6 +10,6 @@ PLAN ──▶ APPLY ──▶ WRAP
 
 ## Session Continuity
 
-Last plan: 02-scrollable-sidebar/02-01-PLAN.md
-Result: PASS — sidebar ScrollBox, scroll-into-view, addNewUser fix
+Last plan: 03-overlay-navigation/03-01-PLAN.md
+Result: PASS — overlay removed, action hints added, inNewMode guard fixed
 Next action: /rail-plan or /rail-pause

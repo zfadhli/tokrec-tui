@@ -49,8 +49,6 @@ const stateIcons: Record<AppStatus, string> = {
 export class CLI {
   private renderer: CliRenderer | null = null;
   private shuttingDown = false;
-  private inStopMode = false;
-  private inRestartMode = false;
   private inNewMode = false;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -184,25 +182,25 @@ export class CLI {
     this.logPane = root[3] as ScrollBoxRenderable | null;
 
     // Populate sidebar with user text placeholders
-    // ponytail: ScrollBox wraps content in wrapper > viewport > content
+    // ponytail: add() puts items as direct children of ScrollBox, not in wrapper>viewport>content
     for (let i = 0; i < this.config.users.length; i++) {
       this.sidebarRenderable?.add(Text({ content: "" }));
     }
-    // Extract sidebar TextRenderables from ScrollBox content
-    const sidebarContent =
-      this.sidebarRenderable?.getChildren()?.[0]?.getChildren()?.[0]?.getChildren() ?? [];
+    // Extract sidebar TextRenderables — items are direct children after wrapper+scrollbars
+    const sidebarChildren = this.sidebarRenderable?.getChildren() ?? [];
+    const sidebarOffset = sidebarChildren.length - this.config.users.length;
     for (let i = 0; i < this.config.users.length; i++) {
-      const child = sidebarContent[i];
+      const child = sidebarChildren[sidebarOffset + i];
       if (child) this.sidebarTexts.push(child as TextRenderable);
     }
 
-    // Populate detail pane with 4 placeholder lines
-    for (let i = 0; i < 4; i++) {
+    // Populate detail pane with 6 placeholder lines (4 info + spacer + actions)
+    for (let i = 0; i < 6; i++) {
       this.detailRenderable?.add(Text({ content: "" }));
     }
     // Extract detail TextRenderables
     const detailChildren = this.detailRenderable?.getChildren() ?? [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const child = detailChildren[i];
       if (child) this.detailTexts.push(child as TextRenderable);
     }
@@ -210,25 +208,23 @@ export class CLI {
     // ── Keyboard handling ──
 
     this.renderer.keyInput.on("keypress", (event: KeyEvent) => {
-      const inAnyMode = this.inStopMode || this.inRestartMode || this.inNewMode;
-
       if (event.name === "q" || (event.ctrl && event.name === "c")) {
-        if (!inAnyMode) {
+        if (!this.inNewMode) {
           this.shutdown().then(() => process.exit(0));
         }
         return;
       }
 
-      if (inAnyMode) return;
+      if (this.inNewMode) return;
 
       if (event.name === "up" || event.name === "k") {
         this.moveSelection(-1);
       } else if (event.name === "down" || event.name === "j") {
         this.moveSelection(1);
       } else if (event.name === "s") {
-        this.handleStopMode();
+        this.stopSelectedUser();
       } else if (event.name === "r") {
-        this.handleRestartMode();
+        this.restartSelectedUser();
       } else if (event.name === "n") {
         this.handleNewMode();
       }
@@ -360,7 +356,7 @@ export class CLI {
 
   private updateDetail(): void {
     const user = this.config.users[this.selectedIndex];
-    if (!user || this.detailTexts.length < 4) return;
+    if (!user || this.detailTexts.length < 6) return;
 
     const statuses = this.manager.getStatuses();
     const state = statuses.get(user) ?? "idle";
@@ -398,6 +394,15 @@ export class CLI {
       currentFile ? `File: ${currentFile}` : "File: —",
       currentFile ? "white" : "gray",
     );
+
+    // Line 4: spacer
+    this.setDetailLine(4, "", "gray");
+
+    // Line 5: Action hints
+    const isActive = state !== "idle";
+    const stopHint = isActive ? "[s] Stop" : "[s] Stop";
+    const stopColor = isActive ? "yellow" : "gray";
+    this.setDetailLine(5, `${stopHint}   [r] Restart`, stopColor);
   }
 
   // ── Log pane ──
@@ -488,89 +493,25 @@ export class CLI {
     if (overlay) this.renderer.root.remove(overlay);
   }
 
-  private handleStopMode(): void {
-    if (!this.renderer || this.inStopMode) return;
-    this.inStopMode = true;
-
-    const users = this.manager.getActiveUsers();
-    this.showOverlay("Stop Mode", (box) => {
-      if (users.length === 0) {
-        box.add(Text({ content: "  No active users." }));
-        box.add(Text({ content: "  Press Enter to return..." }));
-        box.add(Input({ placeholder: "" }));
-        this.focusInput(box, () => {
-          this.removeOverlay();
-          this.inStopMode = false;
-        });
-        return;
-      }
-
-      users.forEach((u, i) => {
-        box.add(Text({ content: `  ${i + 1}. ${u}` }));
-      });
-      box.add(Text({ content: "" }));
-      box.add(Text({ content: "  Enter number or username (blank to cancel):" }));
-      box.add(Input({ placeholder: "" }));
-      this.focusInput(box, (value) => {
-        if (value) {
-          const idx = Number.parseInt(value, 10);
-          const target =
-            !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
-          if (target && users.includes(target)) {
-            const file = this.manager.getProgress(target)?.file;
-            this.addLogEntry(target, "Stopping...");
-            if (file) this.addLogEntry(target, `Saved: ${file}`);
-            this.manager.stopUser(target).catch(() => {});
-          }
-        }
-        this.removeOverlay();
-        this.inStopMode = false;
-      });
-    });
+  private stopSelectedUser(): void {
+    const user = this.config.users[this.selectedIndex];
+    if (!user) return;
+    const file = this.manager.getProgress(user)?.file;
+    this.addLogEntry(user, "Stopping...");
+    if (file) this.addLogEntry(user, `Saved: ${file}`);
+    this.manager.stopUser(user).catch(() => {});
   }
 
-  private handleRestartMode(): void {
-    if (!this.renderer || this.inRestartMode) return;
-    this.inRestartMode = true;
-
-    const users = this.config.users;
-    this.showOverlay("Restart Mode", (box) => {
-      if (users.length === 0) {
-        box.add(Text({ content: "  No configured users." }));
-        box.add(Text({ content: "  Press Enter to return..." }));
-        box.add(Input({ placeholder: "" }));
-        this.focusInput(box, () => {
-          this.removeOverlay();
-          this.inRestartMode = false;
-        });
-        return;
-      }
-
-      users.forEach((u, i) => {
-        box.add(Text({ content: `  ${i + 1}. ${u}` }));
-      });
-      box.add(Text({ content: "" }));
-      box.add(Text({ content: "  Enter number or username (blank to cancel):" }));
-      box.add(Input({ placeholder: "" }));
-      this.focusInput(box, (value) => {
-        if (value) {
-          const idx = Number.parseInt(value, 10);
-          const target =
-            !Number.isNaN(idx) && idx >= 1 && idx <= users.length ? users[idx - 1] : value;
-          if (target && users.includes(target)) {
-            this.addLogEntry(target, "Restarting...");
-            this.manager.restartUser(target, {
-              outputDir: this.config.outputDir,
-              interval: this.config.interval,
-              logConsole: false,
-              ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
-              ...(this.config.duration ? { duration: this.config.duration } : {}),
-            });
-          }
-        }
-        this.removeOverlay();
-        this.inRestartMode = false;
-      });
+  private restartSelectedUser(): void {
+    const user = this.config.users[this.selectedIndex];
+    if (!user) return;
+    this.addLogEntry(user, "Restarting...");
+    this.manager.restartUser(user, {
+      outputDir: this.config.outputDir,
+      interval: this.config.interval,
+      logConsole: false,
+      ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
+      ...(this.config.duration ? { duration: this.config.duration } : {}),
     });
   }
 
@@ -611,10 +552,8 @@ export class CLI {
 
     // Add text to sidebar ScrollBox
     this.sidebarRenderable.add(Text({ content: "" }));
-    // ponytail: ScrollBox content is wrapper > viewport > content
-    const sidebarContent =
-      this.sidebarRenderable.getChildren()?.[0]?.getChildren()?.[0]?.getChildren() ?? [];
-    const renderable = sidebarContent.at(-1) as TextRenderable;
+    // ponytail: items are direct children of ScrollBox
+    const renderable = this.sidebarRenderable.getChildren().at(-1) as TextRenderable;
     if (renderable) {
       this.sidebarTexts.push(renderable);
     }
