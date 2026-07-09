@@ -449,6 +449,8 @@ export class CLI {
 
   // ── Mode overlays ──
 
+  private overlayRenderable: Renderable | null = null;
+
   private showOverlay(title: string, buildContent: (box: Renderable) => void): void {
     if (!this.renderer) return;
 
@@ -467,8 +469,8 @@ export class CLI {
     this.renderer.root.add(overlayBox);
 
     // Extract actual renderable
-    const overlayRenderable = this.renderer.root.getChildren().at(-1);
-    if (!overlayRenderable) return;
+    this.overlayRenderable = this.renderer.root.getChildren().at(-1) ?? null;
+    if (!this.overlayRenderable) return;
 
     const innerBox = Box({
       flexDirection: "column",
@@ -479,20 +481,19 @@ export class CLI {
       width: 50,
       backgroundColor: "black",
     });
-    overlayRenderable.add(innerBox);
+    this.overlayRenderable.add(innerBox);
 
     // Extract inner renderable and pass to builder
-    const innerRenderable = overlayRenderable.getChildren().at(-1);
+    const innerRenderable = this.overlayRenderable.getChildren().at(-1);
     if (innerRenderable) {
       buildContent(innerRenderable);
     }
   }
 
   private removeOverlay(): void {
-    if (!this.renderer) return;
-    const children = this.renderer.root.getChildren();
-    const overlay = children.at(-1);
-    if (overlay) this.renderer.root.remove(overlay);
+    if (!this.renderer || !this.overlayRenderable) return;
+    this.renderer.root.remove(this.overlayRenderable);
+    this.overlayRenderable = null;
   }
 
   private stopSelectedUser(): void {

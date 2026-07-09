@@ -2,13 +2,13 @@
 
 ## Goal
 
-Maintain tokrec-tui — Bun/TypeScript CLI for monitoring/recording TikTok livestreams via tokrec + OpenTUI.
+Redesign tokrec-tui TUI from single-panel list to dashboard layout with sidebar, detail pane, log pane, and JSONC config support.
 
 ## Session Info
 
 - **Branch:** `main`
-- **Project:** tokrec-tui (v0.5.0)
-- **Saved:** 2025-07-06 16:00
+- **Project:** tokrec-tui (v0.6.0)
+- **Saved:** 2026-07-07
 
 ## Changes
 
@@ -17,33 +17,37 @@ Working tree clean. No uncommitted changes.
 ## Commits This Session
 
 ```
-216b04d Release v0.5.0 (#7)
-7323c98 deps: upgrade @zfadhli/tokrec 0.12.2 → 0.13.0
-cfd27a7 feat: surface network errors in TUI and clean up dead controllers
-6ebc673 feat: show elapsed recording timer in TUI
-b5a6567 release: v0.5.0
+91d5bd1 Release v0.6.0 (#8)
+85f8817 release: v0.6.0
+f84779d fix: simplify selected user styling in sidebar
+77128e0 fix: save config to loaded file instead of hardcoded tokrec.json
+606cea3 fix: arrow key navigation, selected color, and filename logging
+aff414b feat: redesign TUI as dashboard with sidebar, detail pane, and log
 ```
 
 ## Files Touched
 
 | File | Status | Done | Left |
 |------|--------|------|------|
-| `src/manager.ts` | modified | Error event tracking, recording timer, start() rejection handling, getLastError(), getRecordingStart() | None |
-| `src/cli.ts` | modified | Error display in status, recording timer (MM:SS/HH:MM:SS) | None |
-| `package.json` | modified | tokrec 0.12.2→0.13.0, version 0.5.0 | None |
-| `CHANGELOG.md` | modified | v0.5.0 section with Added/Changed | None |
+| `src/cli.ts` | modified | Dashboard layout, sidebar navigation, detail pane, log pane, overlays, keyboard shortcuts, filename logging | None |
+| `src/manager.ts` | modified | Progress tracking (download:progress, recording:start/end), filename generation, getProgress() getter | None |
+| `src/config.ts` | modified | tiny-jsonc integration, module-scope configPath for correct save path | None |
+| `package.json` | modified | tokrec-tui v0.6.0, tiny-jsonc dependency | None |
+| `CHANGELOG.md` | modified | v0.6.0 section with Added/Changed/Fixed | None |
 
 ## Key Decisions
 
-- **No auto-restart for transient errors**: Tokrec handles transient errors internally (FFmpeg reconnect, URL refresh, polling loop continues). Controller never transitions to "stopped" from an error. Only surface errors in TUI.
-- **Track recording start time manually**: `RecorderStatus.sessionDuration` is set only after recording ends (static). For live timer, track `Date.now()` on `recording:start` event.
-- **Timer only during "recording" state**: Not during "converting" — converting is post-recording overhead, timer would be misleading.
-- **Merge recording:start into existing handler**: Avoided second event subscription by adding timestamp set to existing error-clearing handler.
+- **Dashboard layout over single-panel**: Multi-panel (header, sidebar, detail, log) provides better information density and navigation for monitoring multiple users.
+- **Manual arrow key handling over Select component**: OpenTUI's `Select` only supports global selected/non-selected styles, no per-item colors. Manual handling gives full control.
+- **Filename generated at recording:start**: tokrec emits `file: ""` at start — generate filename using tokrec's format (`user=YYYYMMDD_HH-MM-SS.ts`) instead.
+- **Module-scope configPath**: Track loaded config path at module scope so saveConfig() defaults to the correct file without changing callers.
+- **No JSONC comment preservation**: JSON.stringify drops comments — acceptable for ~10 line config files.
 
 ## Dead Ends
 
-- **Auto-restart on transient errors**: Original plan included auto-restart logic with restart caps. @oracle review revealed tokrec already handles transient errors internally — the controller never dies from network failures.
-- **EventEmitter on Manager**: Original plan included event emitter for error/restart notifications. Deleted — 2s polling already captures everything, EventEmitter adds indirection for zero benefit.
+- **Styled text for arrow color**: OpenTUI's `t` template returns StyledText objects that stringify to `[object Object]` when interpolated into strings. Reverted to plain text `>>`.
+- **Per-item styling in Select**: OpenTUI Select component only supports two styles (selected/not selected), not per-user colors.
+- **Real-time file/size/speed during recording**: tokrec's `download:progress` only fires after each FFmpeg segment completes, not during. For live streams, segments can last minutes/hours.
 
 ## Blockers
 
@@ -54,6 +58,7 @@ None.
 - [ ] Test full workflow with real TikTok cookies
 - [ ] Consider adding pause/resume per-user
 - [ ] Consider multi-select in stop/restart modes
+- [ ] Consider scrollable sidebar for many users
 
 ## Suggested Skills
 
