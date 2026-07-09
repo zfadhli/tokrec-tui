@@ -112,7 +112,7 @@ export class CLI {
     // Keyboard shortcuts guide
     this.renderer.root.add(
       Text({
-        content: "  [↑/↓/j/k] navigate  [s] stop  [r] restart  [n] new  [q] quit",
+        content: "  [↑/↓/j/k] navigate  [s] stop  [r] restart  [d] delete  [n] new  [q] quit",
         fg: "gray",
       }),
     );
@@ -225,6 +225,8 @@ export class CLI {
         this.stopSelectedUser();
       } else if (event.name === "r") {
         this.restartSelectedUser();
+      } else if (event.name === "d") {
+        this.deleteSelectedUser();
       } else if (event.name === "n") {
         this.handleNewMode();
       }
@@ -402,7 +404,7 @@ export class CLI {
     const isActive = state !== "idle";
     const stopHint = isActive ? "[s] Stop" : "[s] Stop";
     const stopColor = isActive ? "yellow" : "gray";
-    this.setDetailLine(5, `${stopHint}   [r] Restart`, stopColor);
+    this.setDetailLine(5, `${stopHint}   [r] Restart   [d] Delete`, stopColor);
   }
 
   // ── Log pane ──
@@ -513,6 +515,25 @@ export class CLI {
       ...(this.config.cookiesPath ? { cookiesPath: this.config.cookiesPath } : {}),
       ...(this.config.duration ? { duration: this.config.duration } : {}),
     });
+  }
+
+  private deleteSelectedUser(): void {
+    const user = this.config.users[this.selectedIndex];
+    if (!user) return;
+    this.addLogEntry(user, "Deleting...");
+    this.manager.stopUser(user).catch(() => {});
+    this.config.users.splice(this.selectedIndex, 1);
+    saveConfig(this.config);
+    // Remove renderable from ScrollBox and from tracking array
+    const removed = this.sidebarTexts.splice(this.selectedIndex, 1)[0];
+    if (removed && this.sidebarRenderable) {
+      this.sidebarRenderable.remove(removed);
+    }
+    if (this.selectedIndex >= this.config.users.length) {
+      this.selectedIndex = Math.max(0, this.config.users.length - 1);
+    }
+    this.renderSidebar();
+    this.updateDetail();
   }
 
   private handleNewMode(): void {

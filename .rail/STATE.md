@@ -1,7 +1,7 @@
 # Project State
 
 **Core value:** Monitoring
-**Current focus:** Stop/restart in detail pane, inNewMode guard fix — loop complete
+**Current focus:** Added delete user function — loop complete
 
 ## Loop Position
 
@@ -10,6 +10,6 @@ PLAN ──▶ APPLY ──▶ WRAP
 
 ## Session Continuity
 
-Last plan: 03-overlay-navigation/03-01-PLAN.md
-Result: PASS — overlay removed, action hints added, inNewMode guard fixed
+Last plan: 04-delete-user/04-01-PLAN.md
+Result: PASS — deleteSelectedUser + 'd' shortcut + detail pane hint
 Next action: /rail-plan or /rail-pause
