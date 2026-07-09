@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-09
+
+### Added
+- Delete user: press `d` to remove user from config and sidebar
+- Action hints in detail pane: `[s] Stop  [r] Restart  [d] Delete`
+
+### Changed
+- Stop/restart moved from overlay to direct action on selected user
+- Sidebar now scrollable for many users via ScrollBox
+- Keyboard shortcuts guide updated with `[d] delete`
+
+### Fixed
+- Crash after 50+ log entries: store actual Renderable instead of VNode proxy
+- Overlay removal: track overlay reference instead of blindly removing last root child
+- New user overlay: block keyboard shortcuts while overlay is open
+- Sidebar child extraction: use direct children of ScrollBox, not nested wrapper path
+
 ## [0.6.0] - 2026-07-07
 
 ### Added
